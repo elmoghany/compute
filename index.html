@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>cloudcompute</title>
+  <style>
+    :root{--bg:#0b0f17;--panel:#131a26;--panel-2:#1a2330;--line:#243044;--text:#e6edf6;
+      --muted:#8a98ac;--accent:#36d39a;--accent-2:#4aa3ff;--danger:#ff6b6b;--warn:#ffb454;}
+    *{box-sizing:border-box;}
+    body{margin:0;background:var(--bg);color:var(--text);
+      font:14px/1.5 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;}
+    .hidden{display:none!important;}.muted{color:var(--muted);}.spacer{flex:1;}
+    .brand{font-weight:700;font-size:18px;letter-spacing:-.3px;}.brand span{color:var(--accent);}
+    .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;}
+    .login-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+      padding:32px;width:340px;display:flex;flex-direction:column;gap:12px;
+      box-shadow:0 20px 60px rgba(0,0,0,.4);}
+    .login-card .brand{font-size:26px;}
+    .tagline{margin:0 0 8px;color:var(--muted);}
+    input,select{background:var(--panel-2);border:1px solid var(--line);color:var(--text);
+      border-radius:8px;padding:10px 12px;font-size:14px;width:100%;}
+    label.fld{font-size:12px;color:var(--muted);margin-bottom:-6px;}
+    button{background:var(--accent);color:#04241a;border:0;border-radius:8px;padding:10px 14px;
+      font-weight:600;cursor:pointer;}
+    button:hover{filter:brightness(1.05);}
+    button.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);width:auto;}
+    .error{color:var(--danger);min-height:18px;font-size:13px;}
+    .topbar{display:flex;align-items:center;gap:14px;padding:12px 20px;background:var(--panel);
+      border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;}
+    .node-name{background:var(--panel-2);border:1px solid var(--line);border-radius:999px;
+      padding:3px 12px;font-size:13px;}
+    .dot{width:9px;height:9px;border-radius:50%;background:var(--muted);display:inline-block;}
+    .dot.ok{background:var(--accent);box-shadow:0 0 8px var(--accent);}
+    .dot.bad{background:var(--danger);}
+    main{padding:20px;max-width:1100px;margin:0 auto;}
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px;}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
+    @media(max-width:760px){.grid{grid-template-columns:repeat(2,1fr);}.row{grid-template-columns:1fr;}}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px;}
+    .card h3{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);}
+    .metric .big{font-size:28px;font-weight:700;}
+    .metric .sub{color:var(--muted);font-size:12px;margin-top:6px;}
+    .bar{height:7px;background:var(--panel-2);border-radius:999px;overflow:hidden;margin-top:8px;}
+    .bar span{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent-2));transition:width .4s ease;}
+    .bar span.hot{background:linear-gradient(90deg,var(--warn),var(--danger));}
+    table.kv{width:100%;border-collapse:collapse;}
+    table.kv td{padding:4px 6px;vertical-align:top;}
+    table.kv td:first-child{color:var(--muted);width:42%;white-space:nowrap;}
+    .gpu-card{border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:8px;background:var(--panel-2);}
+    .gpu-card .gpu-name{font-weight:600;margin-bottom:4px;}
+    .runner{display:flex;gap:8px;}
+    .runner select{width:auto;}
+    .runner input{flex:1;font-family:ui-monospace,"Cascadia Code",Consolas,monospace;}
+    .runner button{width:auto;}
+    .output{background:#06090f;border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:12px;
+      white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,Consolas,monospace;
+      font-size:12.5px;max-height:360px;overflow:auto;}
+    table.jobs{width:100%;border-collapse:collapse;font-size:13px;}
+    table.jobs th,table.jobs td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);}
+    table.jobs th{color:var(--muted);font-weight:500;}
+    table.jobs td.cmd{font-family:ui-monospace,Consolas,monospace;max-width:360px;overflow:hidden;
+      text-overflow:ellipsis;white-space:nowrap;}
+    .tag{padding:2px 8px;border-radius:999px;font-size:11px;}
+    .tag.completed{background:rgba(54,211,154,.15);color:var(--accent);}
+    .tag.running{background:rgba(74,163,255,.15);color:var(--accent-2);}
+    .tag.timeout{background:rgba(255,180,84,.15);color:var(--warn);}
+    .tag.error{background:rgba(255,107,107,.15);color:var(--danger);}
+    .hint{font-size:11.5px;color:var(--muted);}
+    code{background:var(--panel-2);padding:1px 5px;border-radius:4px;}
+  </style>
+</head>
+<body>
+  <div id="login-view" class="login-wrap hidden">
+    <form id="login-form" class="login-card">
+      <div class="brand">cloud<span>compute</span></div>
+      <p class="tagline">Connect to your private compute node.</p>
+      <label class="fld">Node API URL</label>
+      <input id="api-base" type="url" placeholder="https://xxxx.lhr.life" autocomplete="off" />
+      <label class="fld">Username</label>
+      <input id="login-user" type="text" placeholder="username" autocomplete="username" />
+      <label class="fld">Password</label>
+      <input id="login-pass" type="password" placeholder="password (may be empty)" autocomplete="current-password" />
+      <button type="submit">Sign in</button>
+      <div id="login-error" class="error"></div>
+      <div class="hint">The API URL is your node's public tunnel address (it changes each
+        time you restart the tunnel). This page is static; your node and credentials stay on your PC.</div>
+    </form>
+  </div>
+
+  <div id="dash-view" class="hidden">
+    <header class="topbar">
+      <div class="brand">cloud<span>compute</span></div>
+      <div class="node-name" id="hdr-node">—</div>
+      <div class="spacer"></div>
+      <span class="dot" id="conn-dot" title="connection"></span>
+      <span id="hdr-user" class="muted"></span>
+      <button id="logout-btn" class="ghost">Sign out</button>
+    </header>
+    <main>
+      <section class="grid">
+        <div class="card metric"><h3>CPU</h3><div class="big" id="m-cpu">—</div>
+          <div class="bar"><span id="bar-cpu"></span></div><div class="sub" id="m-cpu-sub"></div></div>
+        <div class="card metric"><h3>Memory</h3><div class="big" id="m-mem">—</div>
+          <div class="bar"><span id="bar-mem"></span></div><div class="sub" id="m-mem-sub"></div></div>
+        <div class="card metric"><h3>Disk</h3><div class="big" id="m-disk">—</div>
+          <div class="bar"><span id="bar-disk"></span></div><div class="sub" id="m-disk-sub"></div></div>
+        <div class="card metric"><h3>Uptime</h3><div class="big" id="m-uptime">—</div>
+          <div class="sub" id="m-procs"></div></div>
+      </section>
+      <section class="row">
+        <div class="card"><h3>Node</h3><table class="kv" id="node-table"><tbody></tbody></table></div>
+        <div class="card"><h3>GPU</h3><div id="gpu-body" class="muted">querying…</div></div>
+      </section>
+      <section class="card">
+        <h3>Run a command</h3>
+        <div class="runner">
+          <select id="run-shell"><option value="powershell">powershell</option>
+            <option value="cmd">cmd</option><option value="bash">bash</option></select>
+          <input id="run-cmd" type="text" placeholder="e.g. Get-Process | Select-Object -First 5" />
+          <button id="run-btn">Run</button>
+        </div>
+        <pre id="run-output" class="output hidden"></pre>
+      </section>
+      <section class="card">
+        <h3>Job history</h3>
+        <table class="jobs" id="jobs-table">
+          <thead><tr><th>#</th><th>command</th><th>shell</th><th>status</th><th>exit</th><th>ms</th><th>when</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </main>
+  </div>
+
+  <script>
+  "use strict";
+  const TOKEN_KEY="cc_token", BASE_KEY="cc_api_base";
+  let pollTimer=null;
+  const $=(id)=>document.getElementById(id);
+  const token=()=>localStorage.getItem(TOKEN_KEY);
+  const apiBase=()=>(localStorage.getItem(BASE_KEY)||"").replace(/\/+$/,"");
+
+  async function api(path,{method="GET",body=null,auth=true}={}){
+    const base=apiBase();
+    if(!base) throw new Error("set the Node API URL first");
+    const headers={"Content-Type":"application/json"};
+    if(auth&&token()) headers["Authorization"]="Bearer "+token();
+    let res;
+    try{
+      res=await fetch(base+path,{method,headers,body:body?JSON.stringify(body):null});
+    }catch(e){ throw new Error("cannot reach node (URL wrong, tunnel down, or CORS): "+e.message); }
+    if(res.status===401&&auth){ logout(); throw new Error("session expired"); }
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(data.detail||res.statusText);
+    return data;
+  }
+  function fmtBytes(n){if(n==null)return "—";const u=["B","KB","MB","GB","TB","PB"];let i=0;
+    while(n>=1024&&i<u.length-1){n/=1024;i++;}return n.toFixed(n<10&&i>0?1:0)+" "+u[i];}
+  function fmtDuration(s){if(s==null)return "—";const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);
+    if(d>0)return d+"d "+h+"h";if(h>0)return h+"h "+m+"m";return m+"m";}
+  function fmtWhen(ts){return ts?new Date(ts*1000).toLocaleTimeString():"—";}
+  function setBar(id,pct){const el=$(id);pct=Math.max(0,Math.min(100,pct||0));el.style.width=pct+"%";el.classList.toggle("hot",pct>=85);}
+  function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+
+  function showLogin(){$("login-view").classList.remove("hidden");$("dash-view").classList.add("hidden");
+    $("api-base").value=localStorage.getItem(BASE_KEY)||"";}
+  function showDash(){$("login-view").classList.add("hidden");$("dash-view").classList.remove("hidden");}
+  function logout(){localStorage.removeItem(TOKEN_KEY);if(pollTimer){clearInterval(pollTimer);pollTimer=null;}showLogin();}
+
+  $("login-form").addEventListener("submit",async(e)=>{
+    e.preventDefault();$("login-error").textContent="";
+    const base=$("api-base").value.trim().replace(/\/+$/,"");
+    if(!base){$("login-error").textContent="enter the Node API URL";return;}
+    localStorage.setItem(BASE_KEY,base);
+    try{
+      const data=await api("/api/login",{method:"POST",auth:false,
+        body:{username:$("login-user").value,password:$("login-pass").value}});
+      localStorage.setItem(TOKEN_KEY,data.access_token);
+      enterDashboard();
+    }catch(err){$("login-error").textContent=err.message||"login failed";}
+  });
+  $("logout-btn").addEventListener("click",logout);
+
+  async function loadNode(){
+    const n=await api("/api/node");
+    $("hdr-node").textContent=n.node_name;$("m-uptime").textContent=fmtDuration(n.uptime_seconds);
+    const rows=[["hostname",n.hostname],["os",n.os],["arch",n.architecture],["cpu",n.cpu_model],
+      ["cores",n.cpu_physical_cores+" physical / "+n.cpu_logical_cores+" logical"],["python",n.python]];
+    $("node-table").querySelector("tbody").innerHTML=rows.map(([k,v])=>
+      "<tr><td>"+k+"</td><td>"+escapeHtml(v)+"</td></tr>").join("");
+  }
+  async function loadMetrics(){
+    const m=await api("/api/metrics");$("conn-dot").className="dot ok";
+    $("m-cpu").textContent=m.cpu_percent.toFixed(0)+"%";setBar("bar-cpu",m.cpu_percent);
+    $("m-cpu-sub").textContent=(m.cpu_per_core||[]).length+" cores"+(m.loadavg?" · load "+m.loadavg.join(" "):"");
+    const mem=m.memory;$("m-mem").textContent=mem.percent.toFixed(0)+"%";setBar("bar-mem",mem.percent);
+    $("m-mem-sub").textContent=fmtBytes(mem.used)+" / "+fmtBytes(mem.total);
+    if(m.disk){$("m-disk").textContent=m.disk.percent.toFixed(0)+"%";setBar("bar-disk",m.disk.percent);
+      $("m-disk-sub").textContent=fmtBytes(m.disk.used)+" / "+fmtBytes(m.disk.total);}
+    $("m-procs").textContent=m.process_count+" processes";
+  }
+  async function loadGpu(){
+    const g=await api("/api/gpu");const body=$("gpu-body");
+    if(!g.available||!g.gpus.length){body.className="muted";
+      body.textContent=g.error?("unavailable — "+g.error):"no NVIDIA GPU detected";return;}
+    body.className="";body.innerHTML=g.gpus.map(gpu=>{
+      const mu=gpu.memory_used_mib,mt=gpu.memory_total_mib,mp=mt?((mu/mt)*100).toFixed(0):"—";
+      return "<div class='gpu-card'><div class='gpu-name'>#"+gpu.index+" "+escapeHtml(gpu.name)+"</div>"+
+        "<div class='muted'>util "+(gpu.utilization_percent??"—")+"% · mem "+(mu??"—")+"/"+(mt??"—")+
+        " MiB ("+mp+"%) · "+(gpu.temperature_c!=null?gpu.temperature_c+"°C":"temp —")+" · "+
+        (gpu.power_draw_w!=null?gpu.power_draw_w+" W":"power —")+"</div></div>";}).join("");
+  }
+  async function loadJobs(){
+    const {jobs}=await api("/api/jobs?limit=25");const tb=$("jobs-table").querySelector("tbody");
+    if(!jobs.length){tb.innerHTML="<tr><td colspan='7' class='muted'>no jobs yet</td></tr>";return;}
+    tb.innerHTML=jobs.map(j=>"<tr><td>"+j.id+"</td><td class='cmd' title='"+escapeHtml(j.command)+"'>"+
+      escapeHtml(j.command)+"</td><td>"+j.shell+"</td><td><span class='tag "+j.status+"'>"+j.status+
+      "</span></td><td>"+(j.exit_code??"—")+"</td><td>"+(j.duration_ms??"—")+"</td><td>"+
+      fmtWhen(j.created_at)+"</td></tr>").join("");
+  }
+  $("run-btn").addEventListener("click",runCommand);
+  $("run-cmd").addEventListener("keydown",(e)=>{if(e.key==="Enter")runCommand();});
+  async function runCommand(){
+    const cmd=$("run-cmd").value.trim();if(!cmd)return;const out=$("run-output");
+    out.classList.remove("hidden");out.textContent="running…";$("run-btn").disabled=true;
+    try{
+      const job=await api("/api/jobs",{method:"POST",body:{command:cmd,shell:$("run-shell").value}});
+      out.textContent="[job #"+job.id+"] status="+job.status+" exit="+(job.exit_code??"—")+
+        " ("+job.duration_ms+" ms)\n\n"+(job.stdout||"")+(job.stderr?"\n[stderr]\n"+job.stderr:"");
+      loadJobs();
+    }catch(err){out.textContent="error: "+err.message;}finally{$("run-btn").disabled=false;}
+  }
+  async function refresh(){try{await loadMetrics();await loadGpu();await loadJobs();}
+    catch(e){$("conn-dot").className="dot bad";}}
+  async function enterDashboard(){
+    showDash();
+    try{const me=await api("/api/me");$("hdr-user").textContent=me.username;
+      await loadNode();await refresh();
+      if(pollTimer)clearInterval(pollTimer);pollTimer=setInterval(refresh,3000);}
+    catch(e){logout();}
+  }
+  if(token()&&apiBase()){enterDashboard();}else{showLogin();}
+  </script>
+</body>
+</html>
