@@ -171,6 +171,14 @@
           <span id="twofa-status" class="muted">two-factor: checking…</span>
           <button id="twofa-btn" class="iconbtn">…</button>
         </div>
+        <h3 style="margin-top:16px;">SSH keys <span class="muted">(passwordless login via CLI)</span></h3>
+        <div class="filerow">
+          <input id="newkey" placeholder="paste your public key: ssh-ed25519 AAAA... " style="flex:1;" />
+          <button id="addkey-btn" class="iconbtn">Add key</button>
+        </div>
+        <table class="jobs" id="keys-table">
+          <thead><tr><th>type</th><th>label</th><th>fingerprint</th><th></th></tr></thead><tbody></tbody>
+        </table>
       </section>
       <section class="card hidden" id="users-card">
         <h3>Users <span class="muted">(admin)</span></h3>
@@ -469,6 +477,27 @@
     }
   }
 
+  // --- SSH keys ---
+  $("addkey-btn").addEventListener("click",addKey);
+  async function loadKeys(){
+    let d;try{ d=await api("/api/keys"); }catch(e){ return; }
+    const tb=$("keys-table").querySelector("tbody");const ks=d.keys||[];
+    if(!ks.length){tb.innerHTML="<tr><td colspan='4' class='muted'>no keys — paste one to enable key login</td></tr>";return;}
+    tb.innerHTML=ks.map(k=>"<tr><td>"+escapeHtml(k.keytype||"")+"</td><td>"+escapeHtml(k.label||"")+
+      "</td><td class='cmd'>"+escapeHtml(k.fingerprint||"")+"</td><td>"+
+      "<button class='iconbtn danger' data-delkey='"+k.id+"'>✕</button></td></tr>").join("");
+    tb.querySelectorAll("[data-delkey]").forEach(b=>b.onclick=()=>delKey(b.getAttribute("data-delkey")));
+  }
+  async function addKey(){
+    const key=$("newkey").value.trim();if(!key)return;
+    try{ await api("/api/keys",{method:"POST",body:{key:key,label:"dashboard"}});$("newkey").value="";loadKeys();loadAudit(); }
+    catch(e){alert(e.message);}
+  }
+  async function delKey(id){
+    if(!confirm("Remove this SSH key?"))return;
+    try{ await api("/api/keys/"+id,{method:"DELETE"});loadKeys();loadAudit(); }catch(e){alert(e.message);}
+  }
+
   async function refresh(){try{await loadMetrics();await loadGpu();await loadJobs();await loadProcesses();await loadAudit();}
     catch(e){$("conn-dot").className="dot bad";}}
   async function enterDashboard(){
@@ -477,7 +506,7 @@
       $("hdr-user").textContent=me.username+" · "+myRole;
       set2fa(!!me.twofa_enabled);
       applyRole();
-      await loadNode();await loadFiles();await loadUsers();await refresh();
+      await loadNode();await loadFiles();await loadUsers();await loadKeys();await refresh();
       if(pollTimer)clearInterval(pollTimer);pollTimer=setInterval(refresh,3000);}
     catch(e){logout();}
   }
