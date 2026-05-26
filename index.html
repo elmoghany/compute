@@ -75,8 +75,11 @@
     <form id="login-form" class="login-card">
       <div class="brand">cloud<span>compute</span></div>
       <p class="tagline">Connect to your private compute node.</p>
-      <label class="fld">Node API URL</label>
-      <input id="api-base" type="url" placeholder="https://xxxx.lhr.life" autocomplete="off" />
+      <label class="fld">Node API URL <span id="disc-status" class="muted"></span></label>
+      <div style="display:flex;gap:8px;">
+        <input id="api-base" type="url" placeholder="https://xxxx.lhr.life" autocomplete="off" style="flex:1;" />
+        <button type="button" id="detect-btn" class="ghost">Auto-detect</button>
+      </div>
       <label class="fld">Username</label>
       <input id="login-user" type="text" placeholder="username" autocomplete="username" />
       <label class="fld">Password</label>
@@ -135,6 +138,8 @@
   <script>
   "use strict";
   const TOKEN_KEY="cc_token", BASE_KEY="cc_api_base";
+  // The PC's tunnel publishes its current public URL here; we auto-discover it.
+  const DISCOVERY="https://gist.githubusercontent.com/elmoghany/226a16dd47c70e31023d7292f6402dd6/raw/node-url.txt";
   let pollTimer=null;
   const $=(id)=>document.getElementById(id);
   const token=()=>localStorage.getItem(TOKEN_KEY);
@@ -239,7 +244,32 @@
       if(pollTimer)clearInterval(pollTimer);pollTimer=setInterval(refresh,3000);}
     catch(e){logout();}
   }
-  if(token()&&apiBase()){enterDashboard();}else{showLogin();}
+  async function discover({silent=false}={}){
+    const st=$("disc-status");
+    if(!silent&&st) st.textContent="(detecting…)";
+    try{
+      const r=await fetch(DISCOVERY+"?cb="+Date.now(),{cache:"no-store"});
+      if(!r.ok) throw new Error("HTTP "+r.status);
+      const url=(await r.text()).trim();
+      if(!/^https:\/\/\S+/.test(url)||/pending/.test(url)){
+        if(st) st.textContent="— node appears offline";
+        return null;
+      }
+      localStorage.setItem(BASE_KEY,url);
+      const f=$("api-base"); if(f) f.value=url;
+      if(st) st.textContent="— auto-detected";
+      return url;
+    }catch(e){
+      if(st) st.textContent="— auto-detect failed (enter URL manually)";
+      return null;
+    }
+  }
+  $("detect-btn").addEventListener("click",()=>discover());
+
+  (async function boot(){
+    await discover({silent:true});
+    if(token()&&apiBase()){ enterDashboard(); } else { showLogin(); }
+  })();
   </script>
 </body>
 </html>
