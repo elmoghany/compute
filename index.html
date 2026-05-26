@@ -126,7 +126,7 @@
         <div class="card"><h3>Node</h3><table class="kv" id="node-table"><tbody></tbody></table></div>
         <div class="card"><h3>GPU</h3><div id="gpu-body" class="muted">querying…</div></div>
       </section>
-      <section class="card">
+      <section class="card" id="run-card">
         <h3>Run a command</h3>
         <div class="runner">
           <select id="run-shell"><option value="powershell">powershell</option>
@@ -163,6 +163,19 @@
           <tbody></tbody>
         </table>
       </section>
+      <section class="card hidden" id="users-card">
+        <h3>Users <span class="muted">(admin)</span></h3>
+        <div class="filerow">
+          <input id="nu-name" placeholder="username" style="flex:1;" />
+          <input id="nu-pass" type="password" placeholder="password" style="flex:1;" />
+          <select id="nu-role"><option value="operator">operator</option>
+            <option value="viewer">viewer</option><option value="admin">admin</option></select>
+          <button id="nu-add" class="iconbtn">Add</button>
+        </div>
+        <table class="jobs" id="users-table">
+          <thead><tr><th>user</th><th>role</th><th></th></tr></thead><tbody></tbody>
+        </table>
+      </section>
       <section class="card">
         <h3>Activity log</h3>
         <table class="jobs" id="audit-table">
@@ -178,7 +191,9 @@
   const TOKEN_KEY="cc_token", BASE_KEY="cc_api_base";
   // The PC's tunnel publishes its current public URL here; we auto-discover it.
   const DISCOVERY="https://gist.githubusercontent.com/elmoghany/226a16dd47c70e31023d7292f6402dd6/raw/node-url.txt";
-  let pollTimer=null;
+  let pollTimer=null, myRole="viewer";
+  const canWrite=()=>myRole==="operator"||myRole==="admin";
+  const isAdmin=()=>myRole==="admin";
   const $=(id)=>document.getElementById(id);
   const token=()=>localStorage.getItem(TOKEN_KEY);
   const apiBase=()=>(localStorage.getItem(BASE_KEY)||"").replace(/\/+$/,"");
@@ -327,7 +342,8 @@
     tb.innerHTML=es.map(e=>"<tr><td class='cmd'>"+(e.is_dir?"📁 ":"")+escapeHtml(e.name)+"</td><td>"+
       (e.size!=null?fmtBytes(e.size):"")+"</td><td>"+(e.is_dir?"":
       "<button class='iconbtn' data-dl='"+escapeHtml(e.name)+"'>↓</button> "+
-      "<button class='iconbtn danger' data-del='"+escapeHtml(e.name)+"'>✕</button>")+"</td></tr>").join("");
+      (canWrite()?"<button class='iconbtn danger' data-del='"+escapeHtml(e.name)+"'>✕</button>":""))+
+      "</td></tr>").join("");
     tb.querySelectorAll("[data-dl]").forEach(b=>b.onclick=()=>downloadFile(b.getAttribute("data-dl")));
     tb.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>deleteFile(b.getAttribute("data-del")));
   }
@@ -363,7 +379,8 @@
     const tb=$("proc-table").querySelector("tbody");
     tb.innerHTML=(d.processes||[]).map(p=>"<tr><td>"+p.pid+"</td><td class='cmd'>"+escapeHtml(p.name)+
       "</td><td>"+fmtBytes(p.rss)+"</td><td>"+(p.cpu_percent||0).toFixed(0)+"</td><td>"+
-      "<button class='iconbtn danger' data-kill='"+p.pid+"'>kill</button></td></tr>").join("");
+      (canWrite()?"<button class='iconbtn danger' data-kill='"+p.pid+"'>kill</button>":"")+
+      "</td></tr>").join("");
     tb.querySelectorAll("[data-kill]").forEach(b=>b.onclick=()=>killProc(b.getAttribute("data-kill")));
   }
   async function killProc(pid){
@@ -372,12 +389,50 @@
     catch(e){alert(e.message);}
   }
 
+  // --- roles / user management ---
+  function applyRole(){
+    const ro=!canWrite();
+    const rc=$("run-card");if(rc)rc.classList.toggle("hidden",ro);
+    const up=$("file-input"),ub=$("upload-btn");
+    if(up)up.disabled=ro;if(ub)ub.style.display=ro?"none":"";
+    $("users-card").classList.toggle("hidden",!isAdmin());
+  }
+  $("nu-add").addEventListener("click",addUser);
+  async function loadUsers(){
+    if(!isAdmin())return;
+    let d;try{ d=await api("/api/users"); }catch(e){ return; }
+    const tb=$("users-table").querySelector("tbody");
+    tb.innerHTML=(d.users||[]).map(u=>"<tr><td>"+escapeHtml(u.username)+"</td><td>"+
+      "<select data-role='"+escapeHtml(u.username)+"'>"+
+      ["admin","operator","viewer"].map(r=>"<option"+(u.role===r?" selected":"")+">"+r+"</option>").join("")+
+      "</select></td><td><button class='iconbtn danger' data-deluser='"+escapeHtml(u.username)+"'>✕</button></td></tr>").join("");
+    tb.querySelectorAll("[data-role]").forEach(s=>s.onchange=()=>setUserRole(s.getAttribute("data-role"),s.value));
+    tb.querySelectorAll("[data-deluser]").forEach(b=>b.onclick=()=>delUser(b.getAttribute("data-deluser")));
+  }
+  async function addUser(){
+    const name=$("nu-name").value.trim();if(!name)return;
+    try{ await api("/api/users",{method:"POST",body:{username:name,password:$("nu-pass").value,role:$("nu-role").value}});
+      $("nu-name").value="";$("nu-pass").value="";loadUsers();loadAudit(); }
+    catch(e){alert(e.message);}
+  }
+  async function delUser(name){
+    if(!confirm("Delete user "+name+"?"))return;
+    try{ await api("/api/users/"+encodeURIComponent(name),{method:"DELETE"});loadUsers();loadAudit(); }
+    catch(e){alert(e.message);}
+  }
+  async function setUserRole(name,role){
+    try{ await api("/api/users/"+encodeURIComponent(name)+"/role",{method:"POST",body:{role:role}});loadAudit(); }
+    catch(e){alert(e.message);loadUsers();}
+  }
+
   async function refresh(){try{await loadMetrics();await loadGpu();await loadJobs();await loadProcesses();await loadAudit();}
     catch(e){$("conn-dot").className="dot bad";}}
   async function enterDashboard(){
     showDash();
-    try{const me=await api("/api/me");$("hdr-user").textContent=me.username;
-      await loadNode();await loadFiles();await refresh();
+    try{const me=await api("/api/me");myRole=me.role||"viewer";
+      $("hdr-user").textContent=me.username+" · "+myRole;
+      applyRole();
+      await loadNode();await loadFiles();await loadUsers();await refresh();
       if(pollTimer)clearInterval(pollTimer);pollTimer=setInterval(refresh,3000);}
     catch(e){logout();}
   }
