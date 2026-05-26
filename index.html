@@ -256,7 +256,14 @@
     pushSpark(histCpu,"spark-cpu",m.cpu_percent);pushSpark(histMem,"spark-mem",mem.percent);
     if(m.disk){$("m-disk").textContent=m.disk.percent.toFixed(0)+"%";setBar("bar-disk",m.disk.percent);
       $("m-disk-sub").textContent=fmtBytes(m.disk.used)+" / "+fmtBytes(m.disk.total);}
-    $("m-procs").textContent=m.process_count+" processes";
+    let line=m.process_count+" processes";
+    if(m.network){
+      if(window._pn){const dt=m.timestamp-window._pn.t;
+        if(dt>0)line+=" · ↓"+fmtBytes((m.network.bytes_recv-window._pn.r)/dt)+"/s ↑"+
+          fmtBytes((m.network.bytes_sent-window._pn.s)/dt)+"/s";}
+      window._pn={t:m.timestamp,r:m.network.bytes_recv,s:m.network.bytes_sent};
+    }
+    $("m-procs").textContent=line;
   }
   async function loadGpu(){
     const g=await api("/api/gpu");const body=$("gpu-body");
