@@ -498,8 +498,11 @@
     try{ await api("/api/keys/"+id,{method:"DELETE"});loadKeys();loadAudit(); }catch(e){alert(e.message);}
   }
 
-  async function refresh(){try{await loadMetrics();await loadGpu();await loadJobs();await loadProcesses();await loadAudit();}
-    catch(e){$("conn-dot").className="dot bad";}}
+  async function refresh(){
+    // run independent reads in parallel — much snappier over a high-latency tunnel
+    const r=await Promise.allSettled([loadMetrics(),loadGpu(),loadJobs(),loadProcesses(),loadAudit()]);
+    $("conn-dot").className = r[0].status==="rejected" ? "dot bad" : "dot ok";
+  }
   async function enterDashboard(){
     showDash();
     try{const me=await api("/api/me");myRole=me.role||"viewer";
