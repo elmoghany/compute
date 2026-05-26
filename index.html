@@ -91,6 +91,8 @@
       <input id="login-user" type="text" placeholder="username" autocomplete="username" />
       <label class="fld">Password</label>
       <input id="login-pass" type="password" placeholder="password (may be empty)" autocomplete="current-password" />
+      <label class="fld">2FA code <span class="muted">(only if enabled)</span></label>
+      <input id="login-code" type="text" placeholder="123456" autocomplete="one-time-code" inputmode="numeric" />
       <button type="submit">Sign in</button>
       <div id="login-error" class="error"></div>
       <div class="hint">The API URL is your node's public tunnel address (it changes each
@@ -163,6 +165,13 @@
           <tbody></tbody>
         </table>
       </section>
+      <section class="card">
+        <h3>Security</h3>
+        <div class="filerow">
+          <span id="twofa-status" class="muted">two-factor: checking…</span>
+          <button id="twofa-btn" class="iconbtn">…</button>
+        </div>
+      </section>
       <section class="card hidden" id="users-card">
         <h3>Users <span class="muted">(admin)</span></h3>
         <div class="filerow">
@@ -232,10 +241,15 @@
     localStorage.setItem(BASE_KEY,base);
     try{
       const data=await api("/api/login",{method:"POST",auth:false,
-        body:{username:$("login-user").value,password:$("login-pass").value}});
+        body:{username:$("login-user").value,password:$("login-pass").value,
+              code:$("login-code").value.trim()||undefined}});
       localStorage.setItem(TOKEN_KEY,data.access_token);
+      $("login-code").value="";
       enterDashboard();
-    }catch(err){$("login-error").textContent=err.message||"login failed";}
+    }catch(err){
+      $("login-error").textContent=err.message||"login failed";
+      if((err.message||"").includes("two-factor")) $("login-code").focus();
+    }
   });
   $("logout-btn").addEventListener("click",logout);
 
@@ -432,12 +446,36 @@
     catch(e){alert(e.message);loadUsers();}
   }
 
+  // --- 2FA ---
+  let twofaOn=false;
+  function set2fa(enabled){
+    twofaOn=enabled;
+    $("twofa-status").textContent="two-factor: "+(enabled?"ENABLED ✓":"disabled");
+    $("twofa-btn").textContent=enabled?"Disable 2FA":"Enable 2FA";
+  }
+  $("twofa-btn").addEventListener("click",toggle2fa);
+  async function toggle2fa(){
+    if(twofaOn){
+      const code=prompt("Enter your current 2FA code to disable:");
+      if(!code)return;
+      try{ await api("/api/2fa/disable",{method:"POST",body:{code:code.trim()}});set2fa(false);loadAudit(); }
+      catch(e){alert(e.message);}
+    }else{
+      let s;try{ s=await api("/api/2fa/setup",{method:"POST"}); }catch(e){alert(e.message);return;}
+      const code=prompt("Add this secret to your authenticator app (Google Authenticator, etc.),\nthen enter the current 6-digit code:\n\nSecret: "+s.secret+"\n\notpauth: "+s.otpauth_uri);
+      if(!code)return;
+      try{ await api("/api/2fa/enable",{method:"POST",body:{secret:s.secret,code:code.trim()}});set2fa(true);loadAudit(); }
+      catch(e){alert(e.message);}
+    }
+  }
+
   async function refresh(){try{await loadMetrics();await loadGpu();await loadJobs();await loadProcesses();await loadAudit();}
     catch(e){$("conn-dot").className="dot bad";}}
   async function enterDashboard(){
     showDash();
     try{const me=await api("/api/me");myRole=me.role||"viewer";
       $("hdr-user").textContent=me.username+" · "+myRole;
+      set2fa(!!me.twofa_enabled);
       applyRole();
       await loadNode();await loadFiles();await loadUsers();await refresh();
       if(pollTimer)clearInterval(pollTimer);pollTimer=setInterval(refresh,3000);}
