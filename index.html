@@ -122,6 +122,7 @@
             <option value="cmd">cmd</option><option value="bash">bash</option></select>
           <input id="run-cmd" type="text" placeholder="e.g. Get-Process | Select-Object -First 5" />
           <button id="run-btn">Run</button>
+          <button id="cancel-btn" class="ghost hidden">Cancel</button>
         </div>
         <pre id="run-output" class="output hidden"></pre>
       </section>
@@ -129,6 +130,13 @@
         <h3>Job history</h3>
         <table class="jobs" id="jobs-table">
           <thead><tr><th>#</th><th>command</th><th>shell</th><th>status</th><th>exit</th><th>ms</th><th>when</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+      <section class="card">
+        <h3>Activity log</h3>
+        <table class="jobs" id="audit-table">
+          <thead><tr><th>when</th><th>event</th><th>user</th><th>ip</th><th>detail</th></tr></thead>
           <tbody></tbody>
         </table>
       </section>
@@ -223,19 +231,51 @@
       "</span></td><td>"+(j.exit_code??"—")+"</td><td>"+(j.duration_ms??"—")+"</td><td>"+
       fmtWhen(j.created_at)+"</td></tr>").join("");
   }
+  let currentJob=null;
   $("run-btn").addEventListener("click",runCommand);
   $("run-cmd").addEventListener("keydown",(e)=>{if(e.key==="Enter")runCommand();});
+  $("cancel-btn").addEventListener("click",async()=>{
+    if(currentJob==null)return;
+    try{ await api("/api/jobs/"+currentJob+"/cancel",{method:"POST"}); }catch(e){}
+  });
+  function renderJobOut(j){
+    $("run-output").textContent="[job #"+j.id+"] status="+j.status+
+      " exit="+(j.exit_code??"—")+(j.duration_ms!=null?" ("+j.duration_ms+" ms)":"")+"\n\n"+
+      (j.stdout||"")+(j.stderr?"\n[stderr]\n"+j.stderr:"");
+    $("run-output").scrollTop=$("run-output").scrollHeight;
+  }
   async function runCommand(){
-    const cmd=$("run-cmd").value.trim();if(!cmd)return;const out=$("run-output");
-    out.classList.remove("hidden");out.textContent="running…";$("run-btn").disabled=true;
+    const cmd=$("run-cmd").value.trim();if(!cmd)return;
+    const out=$("run-output");out.classList.remove("hidden");out.textContent="starting…";
+    $("run-btn").disabled=true;
     try{
       const job=await api("/api/jobs",{method:"POST",body:{command:cmd,shell:$("run-shell").value}});
-      out.textContent="[job #"+job.id+"] status="+job.status+" exit="+(job.exit_code??"—")+
-        " ("+job.duration_ms+" ms)\n\n"+(job.stdout||"")+(job.stderr?"\n[stderr]\n"+job.stderr:"");
-      loadJobs();
-    }catch(err){out.textContent="error: "+err.message;}finally{$("run-btn").disabled=false;}
+      currentJob=job.id;$("cancel-btn").classList.remove("hidden");
+      renderJobOut(job);
+      // poll for live output until the job leaves the 'running' state
+      while(true){
+        await new Promise(r=>setTimeout(r,700));
+        let j;
+        try{ j=await api("/api/jobs/"+job.id); }catch(e){ break; }
+        renderJobOut(j);
+        if(j.status!=="running") break;
+      }
+      loadJobs(); loadAudit();
+    }catch(err){out.textContent="error: "+err.message;}
+    finally{$("run-btn").disabled=false;$("cancel-btn").classList.add("hidden");currentJob=null;}
   }
-  async function refresh(){try{await loadMetrics();await loadGpu();await loadJobs();}
+  async function loadAudit(){
+    let d; try{ d=await api("/api/audit?limit=30"); }catch(e){ return; }
+    const tb=$("audit-table").querySelector("tbody");
+    const ev=d.events||[];
+    if(!ev.length){tb.innerHTML="<tr><td colspan='5' class='muted'>no activity</td></tr>";return;}
+    tb.innerHTML=ev.map(e=>"<tr><td>"+fmtWhen(e.ts)+"</td><td><span class='tag "+
+      (e.event.includes("fail")||e.event.includes("lock")?"error":
+       e.event.includes("success")?"completed":"running")+"'>"+escapeHtml(e.event)+
+      "</span></td><td>"+escapeHtml(e.username||"—")+"</td><td>"+escapeHtml(e.ip||"—")+
+      "</td><td class='cmd' title='"+escapeHtml(e.detail||"")+"'>"+escapeHtml(e.detail||"")+"</td></tr>").join("");
+  }
+  async function refresh(){try{await loadMetrics();await loadGpu();await loadJobs();await loadAudit();}
     catch(e){$("conn-dot").className="dot bad";}}
   async function enterDashboard(){
     showDash();
