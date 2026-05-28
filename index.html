@@ -95,8 +95,10 @@
       <input id="login-code" type="text" placeholder="123456" autocomplete="one-time-code" inputmode="numeric" />
       <button type="submit">Sign in</button>
       <div id="login-error" class="error"></div>
-      <div class="hint">The API URL is your node's public tunnel address (it changes each
-        time you restart the tunnel). This page is static; your node and credentials stay on your PC.</div>
+      <div class="hint">Your node's public tunnel URL. Quick tunnels rotate each restart
+        (use auto-detect); a named Cloudflare tunnel stays stable — bookmark
+        <code>?base=https://your.host</code> to skip this step. The page is static; your
+        node and credentials stay on your PC.</div>
     </form>
   </div>
 
@@ -207,7 +209,18 @@
   "use strict";
   const TOKEN_KEY="cc_token", BASE_KEY="cc_api_base";
   // The PC's tunnel publishes its current public URL here; we auto-discover it.
+  // With a named Cloudflare tunnel (stable hostname), the gist is written once
+  // on startup; users can also bookmark this page with ?base=https://node.example
   const DISCOVERY="https://gist.githubusercontent.com/elmoghany/226a16dd47c70e31023d7292f6402dd6/raw/node-url.txt";
+  // ?base=<url> override: bookmark a stable named-tunnel hostname directly.
+  (function(){
+    try{
+      const q=new URLSearchParams(window.location.search).get("base");
+      if(q && /^https?:\/\/\S+/.test(q)){
+        localStorage.setItem(BASE_KEY, q.replace(/\/+$/,""));
+      }
+    }catch(e){}
+  })();
   let pollTimer=null, myRole="viewer";
   const canWrite=()=>myRole==="operator"||myRole==="admin";
   const isAdmin=()=>myRole==="admin";
