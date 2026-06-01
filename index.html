@@ -284,7 +284,14 @@
           <span id="inst-ssh" class="muted" style="flex:1;font-family:ui-monospace,Consolas,monospace;">ssh: —</span>
           <button id="inst-ssh-sync" class="iconbtn">Sync SSH keys</button>
         </div>
-        <div class="hint">SSH uses the keys in your Security → SSH keys panel. Add a key there, click "Sync SSH keys", then connect with the command above. Recreate rebuilds the container from its image; your <code>/workspace</code> volume (files) survives. Lifecycle applies in Docker sandbox mode.</div>
+        <h3 style="margin-top:14px;">Environment variables</h3>
+        <div class="filerow">
+          <input id="env-key" placeholder="KEY" style="width:200px;" />
+          <input id="env-val" placeholder="value" style="flex:1;" />
+          <button id="env-add" class="iconbtn">Set</button>
+        </div>
+        <table class="jobs" id="env-table"><thead><tr><th>key</th><th>value</th><th></th></tr></thead><tbody></tbody></table>
+        <div class="hint">Injected as <code>-e KEY=value</code> when the instance is (re)created. SSH uses the keys in your Security → SSH keys panel. Add a key there, click "Sync SSH keys", then connect with the command above. Recreate rebuilds the container from its image; your <code>/workspace</code> volume (files) survives. Lifecycle applies in Docker sandbox mode.</div>
       </section>
 
       <section class="card" id="billing-card">
@@ -893,6 +900,7 @@
   });
   async function loadInstance(){
     if(!canWrite()) return;
+    loadEnv();
     let s; try{ s = await api("/api/instance"); }catch(e){ return; }
     const el = $("inst-status");
     if(s.applicable === false){ el.textContent = "n/a — " + (s.detail||"local sandbox"); return; }
@@ -920,6 +928,26 @@
       loadInstanceSsh(); loadAudit(); }
     catch(e){ toast(e.message,"error"); }
   });
+  // instance environment variables
+  $("env-add").addEventListener("click", async () => {
+    const k=$("env-key").value.trim(); if(!k){ toast("key required","error"); return; }
+    try{ await api("/api/instance/env",{method:"POST",body:{key:k,value:$("env-val").value}});
+      $("env-key").value="";$("env-val").value=""; toast("set "+k); loadEnv(); }
+    catch(e){ toast(e.message,"error"); }
+  });
+  async function loadEnv(){
+    let d; try{ d = await api("/api/instance/env"); }catch(e){ return; }
+    const e=d.env||{}; const keys=Object.keys(e);
+    const tb=$("env-table").querySelector("tbody");
+    tb.innerHTML = keys.length ? keys.map(k=>"<tr><td class='cmd'>"+escapeHtml(k)+"</td><td class='cmd'>"+escapeHtml(e[k])+
+      "</td><td><button class='iconbtn danger' data-envdel='"+escapeHtml(k)+"'>✕</button></td></tr>").join("")
+      : "<tr><td colspan='3' class='muted'>no env vars</td></tr>";
+    tb.querySelectorAll("[data-envdel]").forEach(b=>b.onclick=()=>delEnv(b.getAttribute("data-envdel")));
+  }
+  async function delEnv(k){
+    try{ await api("/api/instance/env/"+encodeURIComponent(k),{method:"DELETE"}); loadEnv(); }
+    catch(e){ toast(e.message,"error"); }
+  }
   async function instanceAction(action){
     if(action==="recreate" && !await uiConfirm("Recreate your instance? The container is rebuilt from its image; /workspace files survive."))return;
     try{
