@@ -476,6 +476,11 @@
       </section>
       <section class="card" id="sec-audit">
         <h3>Activity log</h3>
+        <div class="filerow">
+          <input id="audit-filter" placeholder="filter by event prefix (e.g. login_)" style="flex:1;" />
+          <button id="audit-apply" class="iconbtn">Filter</button>
+          <button id="audit-csv" class="iconbtn">Download CSV</button>
+        </div>
         <table class="jobs" id="audit-table">
           <thead><tr><th>when</th><th>event</th><th>user</th><th>ip</th><th>detail</th></tr></thead>
           <tbody></tbody>
@@ -673,7 +678,8 @@
     finally{$("run-btn").disabled=false;$("cancel-btn").classList.add("hidden");currentJob=null;}
   }
   async function loadAudit(){
-    let d; try{ d=await api("/api/audit?limit=30"); }catch(e){ return; }
+    const f=($("audit-filter")&&$("audit-filter").value.trim())||"";
+    let d; try{ d=await api("/api/audit?limit=50"+(f?("&event="+encodeURIComponent(f)):"")); }catch(e){ return; }
     const tb=$("audit-table").querySelector("tbody");
     const ev=d.events||[];
     if(!ev.length){tb.innerHTML="<tr><td colspan='5' class='muted'>no activity</td></tr>";return;}
@@ -683,6 +689,17 @@
       "</span></td><td>"+escapeHtml(e.username||"—")+"</td><td>"+escapeHtml(e.ip||"—")+
       "</td><td class='cmd' title='"+escapeHtml(e.detail||"")+"'>"+escapeHtml(e.detail||"")+"</td></tr>").join("");
   }
+  if($("audit-apply")) $("audit-apply").addEventListener("click", loadAudit);
+  if($("audit-filter")) $("audit-filter").addEventListener("keydown", e=>{if(e.key==="Enter")loadAudit();});
+  if($("audit-csv")) $("audit-csv").addEventListener("click", async () => {
+    const f=$("audit-filter").value.trim();
+    const res=await fetch(apiBase()+"/api/audit.csv"+(f?("?event="+encodeURIComponent(f)):""),
+      {headers:{Authorization:"Bearer "+token()}});
+    if(!res.ok){ toast("export failed","error"); return; }
+    const blob=await res.blob(); const u=URL.createObjectURL(blob);
+    const a=document.createElement("a"); a.href=u; a.download="cloudcompute-audit.csv";
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u);
+  });
   // --- sparklines (client-side rolling history) ---
   const histCpu=[],histMem=[],HIST_MAX=40;
   function pushSpark(arr,svgId,val){
