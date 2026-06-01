@@ -162,6 +162,40 @@
     .modal .msg{color:var(--muted);font-size:13.5px;white-space:pre-wrap;word-break:break-word;line-height:1.5;}
     .modal .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px;}
     .modal input{margin-top:12px;}
+
+    /* keyboard accessibility — visible focus ring for non-text controls */
+    :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px;}
+    input:focus-visible,select:focus-visible,textarea:focus-visible{outline:none;}
+
+    /* live status pill in the topbar */
+    .live{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);white-space:nowrap;}
+    .live .pulse{width:7px;height:7px;border-radius:50%;background:var(--ok);}
+    .live.ok .pulse{animation:pulse 2.4s ease-out infinite;}
+    .live.bad{color:var(--danger);} .live.bad .pulse{background:var(--danger);animation:none;}
+    @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(63,185,80,.5);}70%{box-shadow:0 0 0 6px rgba(63,185,80,0);}100%{box-shadow:0 0 0 0 rgba(63,185,80,0);}}
+
+    /* mobile sidebar backdrop — tap outside to dismiss */
+    .sb-backdrop{display:none;}
+    @media(max-width:820px){
+      .sb-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:15;animation:fadeIn .15s ease;}
+      .sb-backdrop.show{display:block;}
+    }
+
+    /* wide tables scroll horizontally on narrow screens instead of breaking the layout */
+    @media(max-width:760px){
+      table.jobs{display:block;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;}
+    }
+    /* declutter the topbar on phones — the live text + node pill are nowrap and
+       would otherwise force horizontal overflow; the node name still shows in the sidebar */
+    @media(max-width:560px){
+      .topbar .node-name{display:none;}
+      #live-text{display:none;}
+    }
+
+    /* respect reduced-motion preference */
+    @media(prefers-reduced-motion:reduce){
+      *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;}
+    }
   </style>
 </head>
 <body>
@@ -191,6 +225,7 @@
 
   <div id="dash-view" class="hidden">
    <div class="app">
+    <div class="sb-backdrop" id="sb-backdrop"></div>
     <aside class="sidebar" id="sidebar">
       <div class="side-head">
         <div class="brand"><i class="logo"></i> cloud<span>compute</span></div>
@@ -204,9 +239,10 @@
     </aside>
     <div class="main-col">
     <header class="topbar">
-      <button class="menu-btn" id="menu-btn">☰</button>
+      <button class="menu-btn" id="menu-btn" aria-label="Toggle navigation">☰</button>
       <div class="view-title" id="view-title">Overview</div>
       <div class="spacer"></div>
+      <div class="live ok" id="live-pill" title="Live polling status"><span class="pulse"></span><span id="live-text">connecting…</span></div>
       <div class="node-name" id="hdr-node2">—</div>
     </header>
     <main>
@@ -261,14 +297,14 @@
           <div class="filerow">
             <input id="file-input" type="file" style="flex:1;" />
             <button id="upload-btn" class="iconbtn">Upload</button>
-            <button id="files-refresh" class="iconbtn">↻</button>
+            <button id="files-refresh" class="iconbtn" title="Refresh files" aria-label="Refresh files">↻</button>
           </div>
           <table class="jobs" id="files-table">
             <thead><tr><th>name</th><th>size</th><th></th></tr></thead><tbody></tbody>
           </table>
         </div>
         <div class="card">
-          <h3>Top processes <button id="proc-refresh" class="iconbtn">↻</button></h3>
+          <h3>Top processes <button id="proc-refresh" class="iconbtn" title="Refresh processes" aria-label="Refresh processes">↻</button></h3>
           <table class="jobs" id="proc-table">
             <thead><tr><th>pid</th><th>name</th><th>mem</th><th>cpu%</th><th></th></tr></thead><tbody></tbody>
           </table>
@@ -588,7 +624,7 @@
   function showLogin(){$("login-view").classList.remove("hidden");$("dash-view").classList.add("hidden");
     $("api-base").value=localStorage.getItem(BASE_KEY)||"";}
   function showDash(){$("login-view").classList.add("hidden");$("dash-view").classList.remove("hidden");}
-  function logout(){localStorage.removeItem(TOKEN_KEY);if(pollTimer){clearInterval(pollTimer);pollTimer=null;}if(histTimer){clearInterval(histTimer);histTimer=null;}showLogin();}
+  function logout(){localStorage.removeItem(TOKEN_KEY);if(pollTimer){clearInterval(pollTimer);pollTimer=null;}if(histTimer){clearInterval(histTimer);histTimer=null;}if(liveTimer){clearInterval(liveTimer);liveTimer=null;}_lastOkTs=null;showLogin();}
 
   $("login-form").addEventListener("submit",async(e)=>{
     e.preventDefault();$("login-error").textContent="";
@@ -734,8 +770,8 @@
     if(!es.length){tb.innerHTML="<tr><td colspan='3' class='muted'>empty — upload a file</td></tr>";return;}
     tb.innerHTML=es.map(e=>"<tr><td class='cmd'>"+(e.is_dir?"📁 ":"")+escapeHtml(e.name)+"</td><td>"+
       (e.size!=null?fmtBytes(e.size):"")+"</td><td>"+(e.is_dir?"":
-      "<button class='iconbtn' data-dl='"+escapeHtml(e.name)+"'>↓</button> "+
-      (canWrite()?"<button class='iconbtn danger' data-del='"+escapeHtml(e.name)+"'>✕</button>":""))+
+      "<button class='iconbtn' data-dl='"+escapeHtml(e.name)+"' title='Download' aria-label='Download "+escapeHtml(e.name)+"'>↓</button> "+
+      (canWrite()?"<button class='iconbtn danger' data-del='"+escapeHtml(e.name)+"' title='Delete' aria-label='Delete "+escapeHtml(e.name)+"'>✕</button>":""))+
       "</td></tr>").join("");
     tb.querySelectorAll("[data-dl]").forEach(b=>b.onclick=()=>downloadFile(b.getAttribute("data-dl")));
     tb.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>deleteFile(b.getAttribute("data-del")));
@@ -798,22 +834,26 @@
   // --- sidebar navigation / views ---
   // Each nav item maps to the section ids that belong to it.
   const NAV=[
-    {id:"overview", label:"Overview", ic:"◧", secs:["sec-metrics","sec-noderow","sec-history"]},
-    {id:"instance", label:"Instance", ic:"▣", secs:["instance-card","snapshots-card"], write:true},
-    {id:"terminal", label:"Terminal", ic:"❯", secs:["shell-card","run-card"], write:true},
-    {id:"files",    label:"Files",    ic:"▤", secs:["sec-filesrow"]},
-    {id:"jobs",     label:"Activity", ic:"≡", secs:["sec-jobs","sec-audit"]},
-    {id:"billing",  label:"Billing",  ic:"$", secs:["billing-card"]},
-    {id:"security", label:"Security", ic:"⚿", secs:["sec-security"]},
-    {id:"admin",    label:"Admin",    ic:"⚙", secs:["users-card","images-card","flavors-card","alerts-card","webhooks-card","power-card"], admin:true},
+    {id:"overview", label:"Overview", ic:"◧", grp:"Compute", secs:["sec-metrics","sec-noderow","sec-history"]},
+    {id:"instance", label:"Instance", ic:"▣", grp:"Compute", secs:["instance-card","snapshots-card"], write:true},
+    {id:"terminal", label:"Terminal", ic:"❯", grp:"Compute", secs:["shell-card","run-card"], write:true},
+    {id:"files",    label:"Files",    ic:"▤", grp:"Compute", secs:["sec-filesrow"]},
+    {id:"jobs",     label:"Activity", ic:"≡", grp:"Account", secs:["sec-jobs","sec-audit"]},
+    {id:"billing",  label:"Billing",  ic:"$", grp:"Account", secs:["billing-card"]},
+    {id:"security", label:"Security", ic:"⚿", grp:"Account", secs:["sec-security"]},
+    {id:"admin",    label:"Admin",    ic:"⚙", grp:"Admin",   secs:["users-card","images-card","flavors-card","alerts-card","webhooks-card","power-card"], admin:true},
   ];
   const ALL_SECS=NAV.flatMap(n=>n.secs);
   let curView="overview";
   function visibleNav(){ return NAV.filter(n=>!(n.admin&&!isAdmin())); }
   function renderNav(){
-    $("nav").innerHTML = visibleNav().map(n=>
-      "<button class='nav-item"+(n.id===curView?" active":"")+"' data-nav='"+n.id+"'>"+
-      "<span class='ic'>"+n.ic+"</span>"+n.label+"</button>").join("");
+    let html="", lastGrp=null;
+    visibleNav().forEach(n=>{
+      if(n.grp!==lastGrp){ html+="<div class='nav-group'>"+n.grp+"</div>"; lastGrp=n.grp; }
+      html+="<button class='nav-item"+(n.id===curView?" active":"")+"' data-nav='"+n.id+"' aria-current='"+(n.id===curView?"page":"false")+"'>"+
+        "<span class='ic' aria-hidden='true'>"+n.ic+"</span>"+n.label+"</button>";
+    });
+    $("nav").innerHTML=html;
     $("nav").querySelectorAll("[data-nav]").forEach(b=>b.onclick=()=>setView(b.getAttribute("data-nav")));
   }
   function setView(name){
@@ -824,11 +864,17 @@
     ALL_SECS.forEach(id=>{const el=$(id);if(el)el.style.display="none";});
     (view?view.secs:[]).forEach(id=>{const el=$(id);if(el)el.style.display="";});
     $("view-title").textContent=view?view.label:"Overview";
-    $("nav").querySelectorAll("[data-nav]").forEach(b=>
-      b.classList.toggle("active",b.getAttribute("data-nav")===name));
-    const sb=$("sidebar"); if(sb) sb.classList.remove("open");
+    $("nav").querySelectorAll("[data-nav]").forEach(b=>{
+      const on=b.getAttribute("data-nav")===name;
+      b.classList.toggle("active",on); b.setAttribute("aria-current",on?"page":"false");
+    });
+    closeSidebar();
   }
-  if($("menu-btn")) $("menu-btn").addEventListener("click",()=>$("sidebar").classList.toggle("open"));
+  function openSidebar(){const sb=$("sidebar");if(sb)sb.classList.add("open");const bd=$("sb-backdrop");if(bd)bd.classList.add("show");}
+  function closeSidebar(){const sb=$("sidebar");if(sb)sb.classList.remove("open");const bd=$("sb-backdrop");if(bd)bd.classList.remove("show");}
+  if($("menu-btn")) $("menu-btn").addEventListener("click",()=>
+    $("sidebar").classList.contains("open")?closeSidebar():openSidebar());
+  if($("sb-backdrop")) $("sb-backdrop").addEventListener("click",closeSidebar);
 
   // --- roles / user management ---
   function applyRole(){
@@ -853,7 +899,7 @@
     tb.innerHTML=(d.users||[]).map(u=>"<tr><td>"+escapeHtml(u.username)+"</td><td>"+
       "<select data-role='"+escapeHtml(u.username)+"'>"+
       ["admin","operator","viewer"].map(r=>"<option"+(u.role===r?" selected":"")+">"+r+"</option>").join("")+
-      "</select></td><td><button class='iconbtn danger' data-deluser='"+escapeHtml(u.username)+"'>✕</button></td></tr>").join("");
+      "</select></td><td><button class='iconbtn danger' data-deluser='"+escapeHtml(u.username)+"' title='Delete user' aria-label='Delete user "+escapeHtml(u.username)+"'>✕</button></td></tr>").join("");
     tb.querySelectorAll("[data-role]").forEach(s=>s.onchange=()=>setUserRole(s.getAttribute("data-role"),s.value));
     tb.querySelectorAll("[data-deluser]").forEach(b=>b.onclick=()=>delUser(b.getAttribute("data-deluser")));
   }
@@ -1385,10 +1431,26 @@
     $("hist-range").addEventListener("change", loadHistory);
   }
 
+  // --- live status pill (polling heartbeat + relative "updated Ns ago") ---
+  let _lastOkTs=null, liveTimer=null;
+  function setLive(ok){
+    const p=$("live-pill"); if(!p) return;
+    if(ok){ _lastOkTs=Date.now(); p.className="live ok"; } else { p.className="live bad"; }
+    tickLive();
+  }
+  function tickLive(){
+    const p=$("live-pill"), t=$("live-text"); if(!p||!t) return;
+    if(p.classList.contains("bad")){ t.textContent="connection lost — retrying"; return; }
+    if(_lastOkTs==null){ t.textContent="connecting…"; return; }
+    const s=Math.round((Date.now()-_lastOkTs)/1000);
+    t.textContent = s<2 ? "live · updated just now" : "live · updated "+s+"s ago";
+  }
   async function refresh(){
     // run independent reads in parallel — much snappier over a high-latency tunnel
     const r=await Promise.allSettled([loadMetrics(),loadGpu(),loadJobs(),loadProcesses(),loadAudit()]);
-    $("conn-dot").className = r[0].status==="rejected" ? "dot bad" : "dot ok";
+    const ok = r[0].status!=="rejected";
+    $("conn-dot").className = ok ? "dot ok" : "dot bad";
+    setLive(ok);
   }
   async function enterDashboard(){
     showDash();
@@ -1400,7 +1462,8 @@
       await loadNode();await loadFiles();await loadUsers();await loadKeys();await loadTokens();await loadSnapshots();await loadWebhooks();await loadPower();await loadAlerts();await loadImages();await loadFlavors();await loadInstance();await loadBilling();await refresh();
       await loadHistory();
       if(pollTimer)clearInterval(pollTimer);pollTimer=setInterval(refresh,3000);
-      if(histTimer)clearInterval(histTimer);histTimer=setInterval(loadHistory,60000);}
+      if(histTimer)clearInterval(histTimer);histTimer=setInterval(loadHistory,60000);
+      if(liveTimer)clearInterval(liveTimer);liveTimer=setInterval(tickLive,1000);}
     catch(e){logout();}
   }
   async function discover({silent=false}={}){
