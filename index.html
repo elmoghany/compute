@@ -192,7 +192,35 @@
       #live-text{display:none;}
     }
 
-    /* respect reduced-motion preference */
+    /* provider readiness checklist */
+    .checklist{display:flex;flex-direction:column;gap:8px;margin:6px 0 4px;}
+    .chk{display:flex;gap:11px;align-items:flex-start;padding:11px 13px;border:1px solid var(--line);
+      border-radius:9px;background:var(--bg-2);}
+    .chk .ico{width:20px;height:20px;border-radius:50%;flex:0 0 20px;display:flex;align-items:center;
+      justify-content:center;font-size:12px;font-weight:700;margin-top:1px;}
+    .chk.ok .ico{background:rgba(63,185,80,.15);color:var(--ok);border:1px solid rgba(63,185,80,.4);}
+    .chk.bad .ico{background:rgba(248,81,73,.13);color:var(--danger);border:1px solid rgba(248,81,73,.4);}
+    .chk.unk .ico{background:var(--panel-2);color:var(--muted);border:1px solid var(--line-2);}
+    .chk .body{flex:1;min-width:0;}
+    .chk .label{font-weight:600;font-size:13.5px;}
+    .chk .detail{color:var(--muted);font-size:12.5px;margin-top:1px;}
+    .chk .fix{color:var(--warn);font-size:12.5px;margin-top:6px;line-height:1.45;
+      border-left:2px solid rgba(210,153,34,.5);padding-left:9px;}
+    .chk .req{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;margin-left:6px;}
+    .ready-banner{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:9px;
+      font-size:13.5px;font-weight:500;margin-bottom:12px;border:1px solid var(--line-2);}
+    .ready-banner.go{background:rgba(63,185,80,.10);border-color:rgba(63,185,80,.35);color:var(--ok);}
+    .ready-banner.no{background:rgba(210,153,34,.08);border-color:rgba(210,153,34,.35);color:var(--warn);}
+    /* marketplace server cards */
+    .srv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:13px;}
+    .srv{border:1px solid var(--line);border-radius:11px;padding:15px;background:var(--bg-2);
+      display:flex;flex-direction:column;gap:9px;transition:border-color .15s;}
+    .srv:hover{border-color:var(--line-2);}
+    .srv .nm{font-weight:650;font-size:14px;display:flex;align-items:center;gap:8px;}
+    .srv .specs{font-size:12.5px;color:var(--muted);line-height:1.6;}
+    .srv .price{font-size:20px;font-weight:680;letter-spacing:-.3px;}
+    .srv .price small{font-size:12px;color:var(--muted);font-weight:400;}
+    .srv .foot{margin-top:auto;display:flex;gap:8px;align-items:center;}
     @media(prefers-reduced-motion:reduce){
       *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;}
     }
@@ -523,6 +551,35 @@
           <thead><tr><th>user</th><th>role</th><th></th></tr></thead><tbody></tbody>
         </table>
       </section>
+      <section class="card hidden" id="marketplace-card">
+        <h3>Marketplace <span class="muted">(rent a server from the pool)</span>
+          <button id="mkt-refresh" class="iconbtn" title="Refresh" aria-label="Refresh marketplace" style="float:right;">↻</button>
+        </h3>
+        <div id="mkt-rented" class="hint" style="margin-bottom:10px;"></div>
+        <div id="mkt-empty" class="muted hidden" style="padding:8px 0;">No servers available right now — check back, or become a provider to add yours.</div>
+        <div class="srv-grid" id="mkt-grid"></div>
+      </section>
+
+      <section class="card hidden" id="provider-card">
+        <h3>Become a provider <span class="muted">(put this PC in the pool)</span>
+          <button id="prov-refresh" class="iconbtn" title="Re-run checks" aria-label="Re-run checks" style="float:right;">↻ Re-check</button>
+        </h3>
+        <div id="prov-banner" class="ready-banner no"><span>Running readiness checks…</span></div>
+        <div class="checklist" id="prov-checks"></div>
+        <div id="prov-join-row" class="filerow hidden" style="margin-top:14px;align-items:center;">
+          <span class="muted">Price</span>
+          <input id="prov-price" type="number" step="0.01" min="0" placeholder="$/hr" style="width:110px;" />
+          <span class="muted">Region</span>
+          <input id="prov-region" placeholder="e.g. us-east" style="width:140px;" />
+          <span class="spacer"></span>
+          <button id="prov-join" class="iconbtn">Join the pool</button>
+          <button id="prov-leave" class="iconbtn danger hidden">Leave pool</button>
+        </div>
+        <div class="hint" style="margin-top:10px;">When every required check is green, set a price and join — your machine
+          becomes rentable. Follow each fix above (enable VT-x in BIOS, install/start Docker, reboot…). See the
+          <a href="https://github.com/elmoghany/cloudcompute#join-the-server-pool-as-a-provider" target="_blank" rel="noopener">provider guide</a> for full steps.</div>
+      </section>
+
       <section class="card" id="sec-audit">
         <h3>Activity log</h3>
         <div class="filerow">
@@ -831,6 +888,87 @@
     catch(e){toast(e.message,"error");}
   }
 
+  // --- server pool: marketplace (rent) + provider onboarding (join) ---
+  async function loadMarketplace(){
+    let d; try{ d=await api("/api/pool/servers"); }catch(e){ return; }
+    const grid=$("mkt-grid"), servers=d.servers||[];
+    $("mkt-empty").classList.toggle("hidden", servers.length>0);
+    grid.innerHTML=servers.map(s=>{
+      const sp=s.specs||{};
+      const gpu=(sp.gpus&&sp.gpus.length)?(" · "+sp.gpus.length+"× "+escapeHtml(sp.gpus[0].name||"GPU")):"";
+      const price=Number(s.price_per_hour||0);
+      return "<div class='srv'><div class='nm'><span class='state-badge run'><span class='d'></span>online</span>"+
+        escapeHtml(s.node_name||s.provider_id)+"</div>"+
+        "<div class='specs'>"+(sp.cpus||"?")+" vCPU · "+(sp.memory_gb||"?")+" GB RAM"+gpu+
+        (sp.os?("<br>"+escapeHtml(sp.os)):"")+(s.region?(" · "+escapeHtml(s.region)):"")+"</div>"+
+        "<div class='price'>"+(price>0?("$"+price.toFixed(2)+" <small>/hr</small>"):"<small>free</small>")+"</div>"+
+        "<div class='foot'><button class='iconbtn' data-rent='"+escapeHtml(s.provider_id)+"'>Rent</button></div></div>";
+    }).join("");
+    grid.querySelectorAll("[data-rent]").forEach(b=>b.onclick=()=>rentServer(b.getAttribute("data-rent")));
+  }
+  async function rentServer(pid){
+    if(!await uiConfirm("Rent this server? You can release it when done."))return;
+    try{
+      const r=await api("/api/pool/rent",{method:"POST",body:{provider_id:pid}});
+      const s=r.server||{};
+      $("mkt-rented").innerHTML="✓ Rented <b>"+escapeHtml(s.node_name||pid)+"</b> — "+
+        "<a href='"+escapeHtml(s.public_url||"#")+"' target='_blank' rel='noopener'>"+escapeHtml(s.public_url||"")+"</a> "+
+        "<button class='iconbtn' data-release='"+escapeHtml(pid)+"'>Release</button>";
+      $("mkt-rented").querySelectorAll("[data-release]").forEach(b=>b.onclick=()=>releaseServer(b.getAttribute("data-release")));
+      toast("rented "+(s.node_name||pid),"ok"); loadMarketplace();
+    }catch(e){ toast(e.message,"error"); }
+  }
+  async function releaseServer(pid){
+    try{ await api("/api/pool/release",{method:"POST",body:{provider_id:pid}});
+      $("mkt-rented").innerHTML=""; toast("released","ok"); loadMarketplace(); }
+    catch(e){ toast(e.message,"error"); }
+  }
+  if($("mkt-refresh")) $("mkt-refresh").addEventListener("click",loadMarketplace);
+
+  async function loadProviderChecks(){
+    if(!isAdmin())return;
+    let rep; try{ rep=await api("/api/provider/checks"); }catch(e){ return; }
+    const banner=$("prov-banner");
+    banner.className="ready-banner "+(rep.ready?"go":"no");
+    banner.innerHTML="<span>"+(rep.ready
+      ? "✓ This machine passes all required checks — set a price and join the pool."
+      : ("● "+rep.required_passed+"/"+rep.total_required+" required checks passing — complete the steps below."))+"</span>";
+    $("prov-checks").innerHTML=(rep.checks||[]).map(c=>{
+      const cls=c.unknown?"unk":(c.ok?"ok":"bad"); const mark=c.unknown?"?":(c.ok?"✓":"✗");
+      return "<div class='chk "+cls+"'><div class='ico'>"+mark+"</div><div class='body'>"+
+        "<div class='label'>"+escapeHtml(c.label)+(c.required?"<span class='req'>required</span>":"")+"</div>"+
+        "<div class='detail'>"+escapeHtml(c.detail||"")+"</div>"+
+        (c.fix?("<div class='fix'>→ "+escapeHtml(c.fix)+"</div>"):"")+"</div></div>";
+    }).join("");
+    // reflect join state
+    let st; try{ st=await api("/api/provider/status"); }catch(e){ st=null; }
+    const joined=st&&st.joined;
+    $("prov-join-row").classList.remove("hidden");
+    $("prov-join").classList.toggle("hidden",!!joined);
+    $("prov-leave").classList.toggle("hidden",!joined);
+    $("prov-join").disabled=!rep.ready;
+    if(st){ if(st.price_per_hour!=null&&!$("prov-price").value)$("prov-price").value=st.price_per_hour;
+            if(st.region&&!$("prov-region").value)$("prov-region").value=st.region; }
+  }
+  async function joinPool(){
+    const body={};
+    const p=parseFloat($("prov-price").value); if(!isNaN(p))body.price_per_hour=p;
+    const r=$("prov-region").value.trim(); if(r)body.region=r;
+    try{ await api("/api/provider/join",{method:"POST",body}); toast("joined the pool","ok"); loadProviderChecks(); loadMarketplace(); }
+    catch(e){
+      let msg=e.message; try{const o=JSON.parse(msg); if(o.message)msg=o.message+" — see the checklist";}catch(_){}
+      toast(msg,"error");
+    }
+  }
+  async function leavePool(){
+    if(!await uiConfirm("Leave the pool? Your machine stops being rentable."))return;
+    try{ await api("/api/provider/leave",{method:"POST"}); toast("left the pool","ok"); loadProviderChecks(); }
+    catch(e){ toast(e.message,"error"); }
+  }
+  if($("prov-refresh")) $("prov-refresh").addEventListener("click",loadProviderChecks);
+  if($("prov-join")) $("prov-join").addEventListener("click",joinPool);
+  if($("prov-leave")) $("prov-leave").addEventListener("click",leavePool);
+
   // --- sidebar navigation / views ---
   // Each nav item maps to the section ids that belong to it.
   const NAV=[
@@ -838,6 +976,8 @@
     {id:"instance", label:"Instance", ic:"▣", grp:"Compute", secs:["instance-card","snapshots-card"], write:true},
     {id:"terminal", label:"Terminal", ic:"❯", grp:"Compute", secs:["shell-card","run-card"], write:true},
     {id:"files",    label:"Files",    ic:"▤", grp:"Compute", secs:["sec-filesrow"]},
+    {id:"marketplace",label:"Marketplace",ic:"⊞", grp:"Pool", secs:["marketplace-card"]},
+    {id:"provider", label:"Become provider", ic:"⊹", grp:"Pool", secs:["provider-card"], admin:true},
     {id:"jobs",     label:"Activity", ic:"≡", grp:"Account", secs:["sec-jobs","sec-audit"]},
     {id:"billing",  label:"Billing",  ic:"$", grp:"Account", secs:["billing-card"]},
     {id:"security", label:"Security", ic:"⚿", grp:"Account", secs:["sec-security"]},
@@ -890,6 +1030,8 @@
     $("flavors-card").classList.toggle("hidden",!isAdmin());
     $("images-card").classList.toggle("hidden",!isAdmin());
     $("instance-card").classList.toggle("hidden",!canWrite());
+    $("marketplace-card").classList.remove("hidden");      // any user can rent
+    $("provider-card").classList.toggle("hidden",!isAdmin());
   }
   $("nu-add").addEventListener("click",addUser);
   async function loadUsers(){
@@ -1459,7 +1601,7 @@
       set2fa(!!me.twofa_enabled);
       applyRole();
       renderNav(); setView(curView);
-      await loadNode();await loadFiles();await loadUsers();await loadKeys();await loadTokens();await loadSnapshots();await loadWebhooks();await loadPower();await loadAlerts();await loadImages();await loadFlavors();await loadInstance();await loadBilling();await refresh();
+      await loadNode();await loadFiles();await loadUsers();await loadKeys();await loadTokens();await loadSnapshots();await loadWebhooks();await loadPower();await loadAlerts();await loadImages();await loadFlavors();await loadInstance();await loadBilling();await loadMarketplace();await loadProviderChecks();await refresh();
       await loadHistory();
       if(pollTimer)clearInterval(pollTimer);pollTimer=setInterval(refresh,3000);
       if(histTimer)clearInterval(histTimer);histTimer=setInterval(loadHistory,60000);
