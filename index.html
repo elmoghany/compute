@@ -269,6 +269,11 @@
       <section class="card hidden" id="instance-card">
         <h3>Instance <span class="muted">(your sandbox)</span></h3>
         <div class="filerow">
+          <span class="muted">Backend</span>
+          <select id="inst-backend" style="width:auto;"></select>
+          <span class="muted" id="inst-backend-note" style="font-size:12px;"></span>
+        </div>
+        <div class="filerow">
           <span id="inst-status" class="muted">—</span>
           <span class="spacer"></span>
           <button class="iconbtn" data-inst="start">Start</button>
@@ -915,9 +920,24 @@
       loadImages(); loadAudit();
     }catch(e){ toast(e.message,"error"); }
   });
+  async function loadBackend(){
+    if(!canWrite()) return;
+    let b; try{ b = await api("/api/instance/backend"); }catch(e){ return; }
+    const sel=$("inst-backend");
+    const labels={vagrant:"Vagrant VM",docker:"Docker container",local:"Local (host)"};
+    sel.innerHTML="<option value=''>(node default: "+(b.default||"?")+")</option>"+
+      (b.available||[]).map(k=>"<option value='"+k+"'"+(k===b.backend?" selected":"")+">"+(labels[k]||k)+"</option>").join("");
+    $("inst-backend-note").textContent="effective: "+(b.effective||"?");
+    sel.onchange=async()=>{
+      try{ await api("/api/instance/backend",{method:"POST",body:{backend:sel.value}});
+        toast("backend set to "+(sel.value||"node default")+" (applies on next create/recreate)");
+        loadBackend(); loadInstance(); loadAudit(); }
+      catch(e){ toast(e.message,"error"); }
+    };
+  }
   async function loadInstance(){
     if(!canWrite()) return;
-    loadEnv();
+    loadBackend(); loadEnv();
     let s; try{ s = await api("/api/instance"); }catch(e){ return; }
     const el = $("inst-status");
     if(s.applicable === false){ el.textContent = "n/a — " + (s.detail||"local sandbox"); return; }
