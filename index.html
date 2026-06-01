@@ -4,84 +4,145 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>cloudcompute</title>
+  <!-- xterm.js for the interactive shell card; loaded lazily on first open. -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" />
+  <script defer src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
   <style>
-    :root{--bg:#0b0f17;--panel:#131a26;--panel-2:#1a2330;--line:#243044;--text:#e6edf6;
-      --muted:#8a98ac;--accent:#36d39a;--accent-2:#4aa3ff;--danger:#ff6b6b;--warn:#ffb454;}
+    /* ---- Railway-inspired dark theme ---- */
+    :root{
+      --bg:#08080a; --bg-2:#0d0d10; --panel:#121216; --panel-2:#17171c;
+      --line:rgba(255,255,255,.07); --line-2:rgba(255,255,255,.12);
+      --text:#ededf0; --muted:#8b8b95; --faint:#5d5d68;
+      --accent:#c956ff; --accent-press:#b13ff0; --accent-soft:rgba(201,86,255,.14);
+      --ok:#3fb950; --info:#6ea8fe; --warn:#d29922; --danger:#f85149;
+      --r:10px; --sidebar:232px;
+    }
     *{box-sizing:border-box;}
+    ::selection{background:var(--accent-soft);}
     body{margin:0;background:var(--bg);color:var(--text);
-      font:14px/1.5 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;}
+      font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,system-ui,sans-serif;
+      -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums;}
     .hidden{display:none!important;}.muted{color:var(--muted);}.spacer{flex:1;}
-    .brand{font-weight:700;font-size:18px;letter-spacing:-.3px;}.brand span{color:var(--accent);}
-    .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;}
-    .login-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;
-      padding:32px;width:340px;display:flex;flex-direction:column;gap:12px;
-      box-shadow:0 20px 60px rgba(0,0,0,.4);}
-    .login-card .brand{font-size:26px;}
-    .tagline{margin:0 0 8px;color:var(--muted);}
-    input,select{background:var(--panel-2);border:1px solid var(--line);color:var(--text);
-      border-radius:8px;padding:10px 12px;font-size:14px;width:100%;}
-    label.fld{font-size:12px;color:var(--muted);margin-bottom:-6px;}
-    button{background:var(--accent);color:#04241a;border:0;border-radius:8px;padding:10px 14px;
-      font-weight:600;cursor:pointer;}
-    button:hover{filter:brightness(1.05);}
-    button.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);width:auto;}
+    .tnum{font-variant-numeric:tabular-nums;}
+    a{color:var(--accent);text-decoration:none;}
+    .brand{font-weight:650;font-size:16px;letter-spacing:-.2px;display:flex;align-items:center;gap:8px;}
+    .brand .logo{width:20px;height:20px;border-radius:6px;background:linear-gradient(135deg,var(--accent),#7b3ff0);
+      box-shadow:0 0 0 1px var(--line-2),0 2px 10px rgba(201,86,255,.35);}
+    .brand span{color:var(--accent);}
+
+    /* inputs + buttons */
+    input,select,textarea{background:var(--bg-2);border:1px solid var(--line);color:var(--text);
+      border-radius:8px;padding:9px 11px;font-size:13.5px;width:100%;outline:none;transition:border-color .12s,box-shadow .12s;}
+    input::placeholder{color:var(--faint);}
+    input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+    label.fld{font-size:12px;color:var(--muted);margin-bottom:-4px;}
+    button{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:9px 14px;
+      font-weight:600;font-size:13.5px;cursor:pointer;transition:background .12s,filter .12s;}
+    button:hover{background:var(--accent-press);}
+    button.ghost{background:transparent;color:var(--text);border:1px solid var(--line-2);width:auto;}
+    button.ghost:hover{background:var(--panel-2);border-color:var(--faint);}
+    .iconbtn{background:var(--panel-2);border:1px solid var(--line);color:var(--muted);
+      border-radius:7px;padding:5px 11px;cursor:pointer;font-size:12.5px;font-weight:500;width:auto;transition:.12s;}
+    .iconbtn:hover{color:var(--text);border-color:var(--line-2);background:var(--bg-2);}
+    .iconbtn.danger:hover{color:var(--danger);border-color:rgba(248,81,73,.5);background:rgba(248,81,73,.08);}
     .error{color:var(--danger);min-height:18px;font-size:13px;}
-    .topbar{display:flex;align-items:center;gap:14px;padding:12px 20px;background:var(--panel);
-      border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;}
+    code{background:var(--panel-2);border:1px solid var(--line);padding:1px 5px;border-radius:5px;font-size:12px;}
+
+    /* login */
+    .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
+      background:radial-gradient(900px 500px at 50% -10%,rgba(201,86,255,.10),transparent 70%);}
+    .login-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;
+      padding:30px;width:370px;display:flex;flex-direction:column;gap:13px;
+      box-shadow:0 24px 70px rgba(0,0,0,.55);}
+    .login-card .brand{font-size:22px;margin-bottom:2px;}
+    .login-card .logo{width:26px;height:26px;}
+    .tagline{margin:0 0 6px;color:var(--muted);font-size:13px;}
+
+    /* app shell */
+    .app{display:flex;min-height:100vh;}
+    .sidebar{width:var(--sidebar);flex:0 0 var(--sidebar);border-right:1px solid var(--line);
+      background:var(--bg-2);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;}
+    .sidebar .side-head{padding:18px 18px 12px;}
+    .sidebar .node-pill{margin-top:12px;display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);}
+    .nav{flex:1;overflow:auto;padding:6px 10px 16px;}
+    .nav-group{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--faint);
+      margin:14px 8px 5px;font-weight:600;}
+    .nav-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:transparent;
+      border:0;color:var(--muted);padding:7px 10px;border-radius:8px;font-size:13.5px;font-weight:500;cursor:pointer;}
+    .nav-item:hover{background:var(--panel-2);color:var(--text);}
+    .nav-item.active{background:var(--accent-soft);color:#fff;}
+    .nav-item.active .ic{color:var(--accent);}
+    .nav-item .ic{width:16px;text-align:center;color:var(--faint);font-size:14px;}
+    .side-foot{padding:12px 14px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);
+      display:flex;align-items:center;gap:8px;}
+
+    /* topbar + content */
+    .main-col{flex:1;min-width:0;display:flex;flex-direction:column;}
+    .topbar{display:flex;align-items:center;gap:12px;padding:13px 24px;
+      border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;
+      background:rgba(8,8,10,.8);backdrop-filter:blur(8px);}
+    .view-title{font-size:15px;font-weight:600;}
     .node-name{background:var(--panel-2);border:1px solid var(--line);border-radius:999px;
-      padding:3px 12px;font-size:13px;}
-    .dot{width:9px;height:9px;border-radius:50%;background:var(--muted);display:inline-block;}
-    .dot.ok{background:var(--accent);box-shadow:0 0 8px var(--accent);}
+      padding:3px 11px;font-size:12.5px;color:var(--muted);}
+    .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);display:inline-block;}
+    .dot.ok{background:var(--ok);box-shadow:0 0 7px rgba(63,185,80,.7);}
     .dot.bad{background:var(--danger);}
-    main{padding:20px;max-width:1100px;margin:0 auto;}
-    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px;}
-    .row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
+    main{padding:24px;max-width:1160px;margin:0 auto;width:100%;}
+    @media(max-width:820px){
+      .sidebar{position:fixed;left:0;top:0;z-index:20;transform:translateX(-100%);transition:.2s;}
+      .sidebar.open{transform:none;}
+      main{padding:16px;}
+    }
+
+    /* cards / layout */
+    .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px;}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;}
     @media(max-width:760px){.grid{grid-template-columns:repeat(2,1fr);}.row{grid-template-columns:1fr;}}
-    .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px;}
-    .card h3{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);}
-    .metric .big{font-size:28px;font-weight:700;}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-bottom:16px;}
+    .card h3{margin:0 0 12px;font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600;}
+    .metric .big{font-size:30px;font-weight:680;letter-spacing:-.5px;}
     .metric .sub{color:var(--muted);font-size:12px;margin-top:6px;}
-    .bar{height:7px;background:var(--panel-2);border-radius:999px;overflow:hidden;margin-top:8px;}
-    .bar span{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent-2));transition:width .4s ease;}
+    .bar{height:6px;background:var(--bg-2);border-radius:999px;overflow:hidden;margin-top:10px;}
+    .bar span{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),#7b3ff0);transition:width .4s ease;}
     .bar span.hot{background:linear-gradient(90deg,var(--warn),var(--danger));}
     table.kv{width:100%;border-collapse:collapse;}
-    table.kv td{padding:4px 6px;vertical-align:top;}
+    table.kv td{padding:5px 6px;vertical-align:top;font-size:13px;}
     table.kv td:first-child{color:var(--muted);width:42%;white-space:nowrap;}
-    .gpu-card{border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:8px;background:var(--panel-2);}
+    .gpu-card{border:1px solid var(--line);border-radius:8px;padding:11px;margin-bottom:8px;background:var(--bg-2);}
     .gpu-card .gpu-name{font-weight:600;margin-bottom:4px;}
     .runner{display:flex;gap:8px;}
     .runner select{width:auto;}
     .runner input{flex:1;font-family:ui-monospace,"Cascadia Code",Consolas,monospace;}
     .runner button{width:auto;}
-    .output{background:#06090f;border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:12px;
+    .output{background:#060608;border:1px solid var(--line);border-radius:8px;padding:13px;margin-top:12px;
       white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,Consolas,monospace;
       font-size:12.5px;max-height:360px;overflow:auto;}
     table.jobs{width:100%;border-collapse:collapse;font-size:13px;}
-    table.jobs th,table.jobs td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);}
-    table.jobs th{color:var(--muted);font-weight:500;}
+    table.jobs th,table.jobs td{text-align:left;padding:8px 9px;border-bottom:1px solid var(--line);}
+    table.jobs tr:last-child td{border-bottom:0;}
+    table.jobs th{color:var(--muted);font-weight:500;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;}
+    table.jobs tbody tr:hover td{background:rgba(255,255,255,.02);}
     table.jobs td.cmd{font-family:ui-monospace,Consolas,monospace;max-width:360px;overflow:hidden;
-      text-overflow:ellipsis;white-space:nowrap;}
-    .tag{padding:2px 8px;border-radius:999px;font-size:11px;}
-    .tag.completed{background:rgba(54,211,154,.15);color:var(--accent);}
-    .tag.running{background:rgba(74,163,255,.15);color:var(--accent-2);}
-    .tag.timeout{background:rgba(255,180,84,.15);color:var(--warn);}
-    .tag.error{background:rgba(255,107,107,.15);color:var(--danger);}
-    .hint{font-size:11.5px;color:var(--muted);}
-    code{background:var(--panel-2);padding:1px 5px;border-radius:4px;}
+      text-overflow:ellipsis;white-space:nowrap;color:var(--muted);}
+    .tag{padding:2px 9px;border-radius:999px;font-size:11px;font-weight:500;border:1px solid transparent;}
+    .tag.completed{background:rgba(63,185,80,.13);color:var(--ok);border-color:rgba(63,185,80,.25);}
+    .tag.running{background:rgba(110,168,254,.13);color:var(--info);border-color:rgba(110,168,254,.25);}
+    .tag.timeout{background:rgba(210,153,34,.13);color:var(--warn);border-color:rgba(210,153,34,.25);}
+    .tag.error{background:rgba(248,81,73,.13);color:var(--danger);border-color:rgba(248,81,73,.25);}
+    .hint{font-size:12px;color:var(--muted);line-height:1.5;}
     .spark{width:100%;height:22px;margin-top:8px;display:block;}
-    .spark polyline{fill:none;stroke:var(--accent-2);stroke-width:1.5;vector-effect:non-scaling-stroke;}
-    .filerow{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap;}
-    .iconbtn{background:transparent;border:1px solid var(--line);color:var(--muted);
-      border-radius:6px;padding:3px 8px;cursor:pointer;font-size:12px;width:auto;}
-    .iconbtn:hover{color:var(--text);}
-    .iconbtn.danger:hover{color:var(--danger);border-color:var(--danger);}
+    .spark polyline{fill:none;stroke:var(--accent);stroke-width:1.5;vector-effect:non-scaling-stroke;}
+    .filerow{display:flex;gap:8px;align-items:center;margin-bottom:11px;flex-wrap:wrap;}
+    .menu-btn{display:none;background:transparent;border:0;color:var(--text);font-size:20px;cursor:pointer;padding:0 4px;}
+    @media(max-width:820px){.menu-btn{display:block;}}
   </style>
 </head>
 <body>
   <div id="login-view" class="login-wrap hidden">
     <form id="login-form" class="login-card">
-      <div class="brand">cloud<span>compute</span></div>
-      <p class="tagline">Connect to your private compute node.</p>
+      <div class="brand"><i class="logo"></i> cloud<span>compute</span></div>
+      <p class="tagline">Sign in to your private compute node.</p>
       <label class="fld">Node API URL <span id="disc-status" class="muted"></span></label>
       <div style="display:flex;gap:8px;">
         <input id="api-base" type="url" placeholder="https://xxxx.lhr.life" autocomplete="off" style="flex:1;" />
@@ -103,16 +164,27 @@
   </div>
 
   <div id="dash-view" class="hidden">
+   <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="side-head">
+        <div class="brand"><i class="logo"></i> cloud<span>compute</span></div>
+        <div class="node-pill"><span class="dot" id="conn-dot" title="connection"></span> <span id="hdr-node">—</span></div>
+      </div>
+      <nav class="nav" id="nav"></nav>
+      <div class="side-foot">
+        <span class="spacer" id="hdr-user"></span>
+        <button id="logout-btn" class="iconbtn">Sign out</button>
+      </div>
+    </aside>
+    <div class="main-col">
     <header class="topbar">
-      <div class="brand">cloud<span>compute</span></div>
-      <div class="node-name" id="hdr-node">—</div>
+      <button class="menu-btn" id="menu-btn">☰</button>
+      <div class="view-title" id="view-title">Overview</div>
       <div class="spacer"></div>
-      <span class="dot" id="conn-dot" title="connection"></span>
-      <span id="hdr-user" class="muted"></span>
-      <button id="logout-btn" class="ghost">Sign out</button>
+      <div class="node-name" id="hdr-node2">—</div>
     </header>
     <main>
-      <section class="grid">
+      <section class="grid" id="sec-metrics">
         <div class="card metric"><h3>CPU</h3><div class="big" id="m-cpu">—</div>
           <div class="bar"><span id="bar-cpu"></span></div>
           <svg class="spark" id="spark-cpu" viewBox="0 0 100 22" preserveAspectRatio="none"><polyline points=""/></svg>
@@ -126,10 +198,22 @@
         <div class="card metric"><h3>Uptime</h3><div class="big" id="m-uptime">—</div>
           <div class="sub" id="m-procs"></div></div>
       </section>
-      <section class="row">
+      <section class="row" id="sec-noderow">
         <div class="card"><h3>Node</h3><table class="kv" id="node-table"><tbody></tbody></table></div>
         <div class="card"><h3>GPU</h3><div id="gpu-body" class="muted">querying…</div></div>
       </section>
+      <section class="card" id="shell-card">
+        <h3>Interactive shell <span class="muted">(WebSocket)</span></h3>
+        <div class="filerow">
+          <button id="shell-open" class="iconbtn">Open shell</button>
+          <button id="shell-close" class="iconbtn hidden">Close</button>
+          <span id="shell-status" class="muted">disconnected</span>
+        </div>
+        <div id="xterm" style="width:100%;height:340px;background:#000;border:1px solid var(--line);border-radius:8px;display:none;"></div>
+        <div class="hint">Real shell on the node. Output streams live; line editing
+        is limited (no PTY yet — pipes only), but ls/cat/cd/curl/etc. work.</div>
+      </section>
+
       <section class="card" id="run-card">
         <h3>Run a command</h3>
         <div class="runner">
@@ -141,9 +225,13 @@
         </div>
         <pre id="run-output" class="output hidden"></pre>
       </section>
-      <section class="row">
+      <section class="row" id="sec-filesrow">
         <div class="card">
           <h3>Files (workspace)</h3>
+          <div class="filerow" style="margin-bottom:6px;">
+            <span id="quota-text" class="muted" style="flex:1;">—</span>
+          </div>
+          <div class="bar" id="quota-bar-wrap" style="margin-bottom:8px;display:none;"><span id="quota-bar"></span></div>
           <div class="filerow">
             <input id="file-input" type="file" style="flex:1;" />
             <button id="upload-btn" class="iconbtn">Upload</button>
@@ -160,14 +248,115 @@
           </table>
         </div>
       </section>
-      <section class="card">
+      <section class="card hidden" id="instance-card">
+        <h3>Instance <span class="muted">(your sandbox)</span></h3>
+        <div class="filerow">
+          <span id="inst-status" class="muted">—</span>
+          <span class="spacer"></span>
+          <button class="iconbtn" data-inst="start">Start</button>
+          <button class="iconbtn" data-inst="stop">Stop</button>
+          <button class="iconbtn" data-inst="restart">Restart</button>
+          <button class="iconbtn danger" data-inst="recreate">Recreate</button>
+          <button id="inst-saveimg" class="iconbtn">Save as image</button>
+        </div>
+        <div class="filerow" style="margin-top:6px;">
+          <span id="inst-usage" class="muted">uptime: —</span>
+        </div>
+        <div class="filerow" style="margin-top:6px;">
+          <span id="inst-ssh" class="muted" style="flex:1;font-family:ui-monospace,Consolas,monospace;">ssh: —</span>
+          <button id="inst-ssh-sync" class="iconbtn">Sync SSH keys</button>
+        </div>
+        <div class="hint">SSH uses the keys in your Security → SSH keys panel. Add a key there, click "Sync SSH keys", then connect with the command above. Recreate rebuilds the container from its image; your <code>/workspace</code> volume (files) survives. Lifecycle applies in Docker sandbox mode.</div>
+      </section>
+
+      <section class="card" id="billing-card">
+        <h3>Billing <span class="muted" id="billing-mode">—</span></h3>
+        <div class="filerow">
+          <span id="billing-info" class="muted" style="flex:1;">—</span>
+          <button id="billing-invoice" class="iconbtn">Generate invoice</button>
+          <button id="billing-pay" class="iconbtn hidden">Pay now</button>
+        </div>
+        <div class="hint" id="billing-note"></div>
+        <table class="jobs" id="invoices-table" style="margin-top:8px;">
+          <thead><tr><th>#</th><th>amount</th><th>status</th><th>when</th></tr></thead><tbody></tbody>
+        </table>
+      </section>
+
+      <section class="card hidden" id="images-card">
+        <h3>Images <span class="muted">(admin · launch catalog)</span></h3>
+        <div class="filerow">
+          <input id="img-name" placeholder="name (e.g. cuda)" style="width:150px;" />
+          <input id="img-ref" placeholder="image ref (e.g. myrepo/cuda:12)" style="flex:1;" />
+          <input id="img-desc" placeholder="description" style="flex:1;" />
+          <button id="img-add" class="iconbtn">Add image</button>
+        </div>
+        <table class="jobs" id="images-table">
+          <thead><tr><th>name</th><th>ref</th><th>description</th><th></th></tr></thead><tbody></tbody>
+        </table>
+        <div class="hint">Assign an image to a user by <em>name</em> via the sandbox-image API; raw refs also work.</div>
+      </section>
+
+      <section class="card hidden" id="flavors-card">
+        <h3>Flavors <span class="muted">(admin · instance sizes)</span></h3>
+        <div class="filerow">
+          <input id="fl-name" placeholder="name (e.g. xlarge)" style="flex:1;" />
+          <input id="fl-cpus" placeholder="cpus (e.g. 8)" style="width:90px;" />
+          <input id="fl-mem" placeholder="mem (e.g. 16g)" style="width:100px;" />
+          <input id="fl-price" placeholder="$/hr" style="width:80px;" />
+          <button id="fl-add" class="iconbtn">Add flavor</button>
+        </div>
+        <table class="jobs" id="flavors-table">
+          <thead><tr><th>name</th><th>cpus</th><th>memory</th><th>$/hr</th><th></th></tr></thead><tbody></tbody>
+        </table>
+        <div class="filerow" style="margin-top:8px;">
+          <input id="fl-user" placeholder="username" style="flex:1;" />
+          <select id="fl-assign"></select>
+          <button id="fl-assign-btn" class="iconbtn">Assign to user</button>
+        </div>
+      </section>
+
+      <section class="card" id="snapshots-card">
+        <h3>Workspace snapshots</h3>
+        <div class="filerow">
+          <input id="snap-label" placeholder="label (e.g. before-migration)" style="flex:1;" />
+          <button id="snap-create" class="iconbtn">Create snapshot</button>
+        </div>
+        <table class="jobs" id="snapshots-table">
+          <thead><tr><th>#</th><th>label</th><th>size</th><th>when</th><th></th></tr></thead><tbody></tbody>
+        </table>
+        <div class="hint">Restoring extracts into <code>workspace/.restored-&lt;id&gt;-&lt;label&gt;/</code> (non-destructive).</div>
+      </section>
+
+      <section class="card" id="sec-history">
+        <h3>Metric history <span class="muted">(server-side)</span>
+          <select id="hist-range" style="width:auto;display:inline-block;margin-left:8px;">
+            <option value="1">last hour</option>
+            <option value="6" selected>last 6 hours</option>
+            <option value="24">last 24 hours</option>
+          </select>
+        </h3>
+        <svg id="hist-chart" viewBox="0 0 600 140" preserveAspectRatio="none"
+             style="width:100%;height:160px;background:#06090f;border:1px solid var(--line);border-radius:8px;">
+          <polyline id="hist-cpu" points="" fill="none" stroke="#4aa3ff" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+          <polyline id="hist-mem" points="" fill="none" stroke="#36d39a" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+          <polyline id="hist-disk" points="" fill="none" stroke="#ffb454" stroke-width="1.2" vector-effect="non-scaling-stroke" stroke-dasharray="3 3"/>
+        </svg>
+        <div class="hint" style="margin-top:6px;">
+          <span style="color:#4aa3ff;">— CPU%</span> ·
+          <span style="color:#36d39a;">— Memory%</span> ·
+          <span style="color:#ffb454;">— Disk%</span>
+          <span id="hist-empty" class="muted hidden" style="margin-left:8px;">collecting first sample…</span>
+        </div>
+      </section>
+
+      <section class="card" id="sec-jobs">
         <h3>Job history</h3>
         <table class="jobs" id="jobs-table">
-          <thead><tr><th>#</th><th>command</th><th>shell</th><th>status</th><th>exit</th><th>ms</th><th>when</th></tr></thead>
+          <thead><tr><th>#</th><th>user</th><th>command</th><th>shell</th><th>status</th><th>exit</th><th>ms</th><th>when</th></tr></thead>
           <tbody></tbody>
         </table>
       </section>
-      <section class="card">
+      <section class="card" id="sec-security">
         <h3>Security</h3>
         <div class="filerow">
           <span id="twofa-status" class="muted">two-factor: checking…</span>
@@ -181,7 +370,72 @@
         <table class="jobs" id="keys-table">
           <thead><tr><th>type</th><th>label</th><th>fingerprint</th><th></th></tr></thead><tbody></tbody>
         </table>
+
+        <h3 style="margin-top:16px;">API tokens <span class="muted">(programmatic access)</span></h3>
+        <div class="filerow">
+          <input id="tok-label" placeholder="label (e.g. ci-bot)" style="flex:1;" />
+          <input id="tok-days" type="number" min="0" placeholder="expires (days, blank = never)" style="width:200px;" />
+          <button id="tok-add" class="iconbtn">Mint token</button>
+        </div>
+        <pre id="tok-just-made" class="output hidden" style="font-size:12px;"></pre>
+        <table class="jobs" id="tokens-table">
+          <thead><tr><th>label</th><th>created</th><th>expires</th><th>last used</th><th></th></tr></thead><tbody></tbody>
+        </table>
       </section>
+      <section class="card hidden" id="alerts-card">
+        <h3>Alerts <span class="muted">(admin · metric thresholds → audit + webhooks)</span></h3>
+        <div class="filerow">
+          <select id="al-metric">
+            <option value="cpu_percent">cpu_percent</option>
+            <option value="mem_percent">mem_percent</option>
+            <option value="disk_percent">disk_percent</option>
+            <option value="gpu_util">gpu_util</option>
+            <option value="gpu_mem">gpu_mem</option>
+          </select>
+          <select id="al-op"><option>&gt;</option><option>&gt;=</option><option>&lt;</option><option>&lt;=</option></select>
+          <input id="al-threshold" type="number" placeholder="threshold" style="width:110px;" />
+          <span class="muted">for</span>
+          <input id="al-for" type="number" min="0" value="0" style="width:80px;" />
+          <span class="muted">s</span>
+          <input id="al-label" placeholder="label" style="flex:1;" />
+          <button id="al-add" class="iconbtn">Add rule</button>
+        </div>
+        <table class="jobs" id="alerts-table">
+          <thead><tr><th>#</th><th>rule</th><th>for</th><th>breaching</th><th>last fired</th><th></th></tr></thead><tbody></tbody>
+        </table>
+      </section>
+
+      <section class="card hidden" id="power-card">
+        <h3>Power <span class="muted">(admin · host control)</span></h3>
+        <div id="power-disabled" class="muted hidden">Disabled. Set <code>CC_POWER_ENABLED=1</code> on the node to enable.</div>
+        <div id="power-controls" class="filerow hidden">
+          <button class="iconbtn" data-power="lock">Lock</button>
+          <button class="iconbtn" data-power="sleep">Sleep</button>
+          <button class="iconbtn danger" data-power="restart">Restart</button>
+          <button class="iconbtn danger" data-power="shutdown">Shutdown</button>
+          <button class="iconbtn" data-power="cancel">Cancel pending</button>
+          <span class="muted" style="margin-left:8px;">delay (s):</span>
+          <input id="power-delay" type="number" min="0" value="0" style="width:80px;" />
+        </div>
+        <div class="hint">Restart/Shutdown take the whole node down — you'll lose this dashboard until it's back. Delay gives a window to "Cancel pending".</div>
+      </section>
+
+      <section class="card hidden" id="webhooks-card">
+        <h3>Webhooks <span class="muted">(admin · audit event fan-out)</span></h3>
+        <div class="filerow">
+          <input id="wh-url" placeholder="https://hooks.slack.com/..." style="flex:1;" />
+          <input id="wh-label" placeholder="label" style="width:160px;" />
+        </div>
+        <div class="filerow" style="margin-top:6px;">
+          <input id="wh-filter" placeholder="events filter (e.g. login_,job_run or *)" style="flex:1;" value="*" />
+          <input id="wh-secret" placeholder="hmac secret (optional)" style="width:240px;" />
+          <button id="wh-add" class="iconbtn">Add webhook</button>
+        </div>
+        <table class="jobs" id="webhooks-table">
+          <thead><tr><th>#</th><th>url</th><th>filter</th><th>last fired</th><th>status</th><th></th></tr></thead><tbody></tbody>
+        </table>
+      </section>
+
       <section class="card hidden" id="users-card">
         <h3>Users <span class="muted">(admin)</span></h3>
         <div class="filerow">
@@ -195,7 +449,7 @@
           <thead><tr><th>user</th><th>role</th><th></th></tr></thead><tbody></tbody>
         </table>
       </section>
-      <section class="card">
+      <section class="card" id="sec-audit">
         <h3>Activity log</h3>
         <table class="jobs" id="audit-table">
           <thead><tr><th>when</th><th>event</th><th>user</th><th>ip</th><th>detail</th></tr></thead>
@@ -203,6 +457,8 @@
         </table>
       </section>
     </main>
+    </div>
+   </div>
   </div>
 
   <script>
@@ -253,7 +509,7 @@
   function showLogin(){$("login-view").classList.remove("hidden");$("dash-view").classList.add("hidden");
     $("api-base").value=localStorage.getItem(BASE_KEY)||"";}
   function showDash(){$("login-view").classList.add("hidden");$("dash-view").classList.remove("hidden");}
-  function logout(){localStorage.removeItem(TOKEN_KEY);if(pollTimer){clearInterval(pollTimer);pollTimer=null;}showLogin();}
+  function logout(){localStorage.removeItem(TOKEN_KEY);if(pollTimer){clearInterval(pollTimer);pollTimer=null;}if(histTimer){clearInterval(histTimer);histTimer=null;}showLogin();}
 
   $("login-form").addEventListener("submit",async(e)=>{
     e.preventDefault();$("login-error").textContent="";
@@ -276,7 +532,9 @@
 
   async function loadNode(){
     const n=await api("/api/node");
-    $("hdr-node").textContent=n.node_name;$("m-uptime").textContent=fmtDuration(n.uptime_seconds);
+    $("hdr-node").textContent=n.node_name;
+    if($("hdr-node2")) $("hdr-node2").textContent=n.node_name;
+    $("m-uptime").textContent=fmtDuration(n.uptime_seconds);
     const rows=[["hostname",n.hostname],["os",n.os],["arch",n.architecture],["cpu",n.cpu_model],
       ["cores",n.cpu_physical_cores+" physical / "+n.cpu_logical_cores+" logical"],["python",n.python]];
     $("node-table").querySelector("tbody").innerHTML=rows.map(([k,v])=>
@@ -313,8 +571,9 @@
   }
   async function loadJobs(){
     const {jobs}=await api("/api/jobs?limit=25");const tb=$("jobs-table").querySelector("tbody");
-    if(!jobs.length){tb.innerHTML="<tr><td colspan='7' class='muted'>no jobs yet</td></tr>";return;}
-    tb.innerHTML=jobs.map(j=>"<tr><td>"+j.id+"</td><td class='cmd' title='"+escapeHtml(j.command)+"'>"+
+    if(!jobs.length){tb.innerHTML="<tr><td colspan='8' class='muted'>no jobs yet</td></tr>";return;}
+    tb.innerHTML=jobs.map(j=>"<tr><td>"+j.id+"</td><td class='muted'>"+escapeHtml(j.username||"")+
+      "</td><td class='cmd' title='"+escapeHtml(j.command)+"'>"+
       escapeHtml(j.command)+"</td><td>"+j.shell+"</td><td><span class='tag "+j.status+"'>"+j.status+
       "</span></td><td>"+(j.exit_code??"—")+"</td><td>"+(j.duration_ms??"—")+"</td><td>"+
       fmtWhen(j.created_at)+"</td></tr>").join("");
@@ -378,6 +637,7 @@
   $("files-refresh").addEventListener("click",loadFiles);
   $("file-input").addEventListener("change",()=>{ if($("file-input").files[0]) uploadFile(); });
   async function loadFiles(){
+    loadQuota();
     let d;try{ d=await api("/api/files"); }catch(e){ return; }
     const tb=$("files-table").querySelector("tbody");const es=d.entries||[];
     if(!es.length){tb.innerHTML="<tr><td colspan='3' class='muted'>empty — upload a file</td></tr>";return;}
@@ -388,6 +648,19 @@
       "</td></tr>").join("");
     tb.querySelectorAll("[data-dl]").forEach(b=>b.onclick=()=>downloadFile(b.getAttribute("data-dl")));
     tb.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>deleteFile(b.getAttribute("data-del")));
+  }
+  async function loadQuota(){
+    let q; try{ q=await api("/api/quotas"); }catch(e){ return; }
+    const txt=$("quota-text"), bar=$("quota-bar"), wrap=$("quota-bar-wrap");
+    if(q.limit_bytes>0){
+      txt.textContent="workspace: "+fmtBytes(q.used_bytes)+" / "+fmtBytes(q.limit_bytes)+" ("+(q.percent||0).toFixed(0)+"%)";
+      wrap.style.display="block";
+      bar.style.width=Math.min(100,q.percent||0)+"%";
+      bar.classList.toggle("hot",(q.percent||0)>=85);
+    } else {
+      txt.textContent="workspace: "+fmtBytes(q.used_bytes)+" (no quota)";
+      wrap.style.display="none";
+    }
   }
   async function downloadFile(name){
     const res=await fetch(apiBase()+"/api/files/download?path="+encodeURIComponent(name),
@@ -431,13 +704,55 @@
     catch(e){alert(e.message);}
   }
 
+  // --- sidebar navigation / views ---
+  // Each nav item maps to the section ids that belong to it.
+  const NAV=[
+    {id:"overview", label:"Overview", ic:"◧", secs:["sec-metrics","sec-noderow","sec-history"]},
+    {id:"instance", label:"Instance", ic:"▣", secs:["instance-card","snapshots-card"], write:true},
+    {id:"terminal", label:"Terminal", ic:"❯", secs:["shell-card","run-card"], write:true},
+    {id:"files",    label:"Files",    ic:"▤", secs:["sec-filesrow"]},
+    {id:"jobs",     label:"Activity", ic:"≡", secs:["sec-jobs","sec-audit"]},
+    {id:"billing",  label:"Billing",  ic:"$", secs:["billing-card"]},
+    {id:"security", label:"Security", ic:"⚿", secs:["sec-security"]},
+    {id:"admin",    label:"Admin",    ic:"⚙", secs:["users-card","images-card","flavors-card","alerts-card","webhooks-card","power-card"], admin:true},
+  ];
+  const ALL_SECS=NAV.flatMap(n=>n.secs);
+  let curView="overview";
+  function visibleNav(){ return NAV.filter(n=>!(n.admin&&!isAdmin())); }
+  function renderNav(){
+    $("nav").innerHTML = visibleNav().map(n=>
+      "<button class='nav-item"+(n.id===curView?" active":"")+"' data-nav='"+n.id+"'>"+
+      "<span class='ic'>"+n.ic+"</span>"+n.label+"</button>").join("");
+    $("nav").querySelectorAll("[data-nav]").forEach(b=>b.onclick=()=>setView(b.getAttribute("data-nav")));
+  }
+  function setView(name){
+    if(!visibleNav().some(n=>n.id===name)) name="overview";
+    curView=name;
+    const view=NAV.find(n=>n.id===name);
+    // hide every managed section, then show this view's sections (role .hidden still wins)
+    ALL_SECS.forEach(id=>{const el=$(id);if(el)el.style.display="none";});
+    (view?view.secs:[]).forEach(id=>{const el=$(id);if(el)el.style.display="";});
+    $("view-title").textContent=view?view.label:"Overview";
+    $("nav").querySelectorAll("[data-nav]").forEach(b=>
+      b.classList.toggle("active",b.getAttribute("data-nav")===name));
+    const sb=$("sidebar"); if(sb) sb.classList.remove("open");
+  }
+  if($("menu-btn")) $("menu-btn").addEventListener("click",()=>$("sidebar").classList.toggle("open"));
+
   // --- roles / user management ---
   function applyRole(){
     const ro=!canWrite();
     const rc=$("run-card");if(rc)rc.classList.toggle("hidden",ro);
+    const sc=$("shell-card");if(sc)sc.classList.toggle("hidden",ro);
     const up=$("file-input"),ub=$("upload-btn");
     if(up)up.disabled=ro;if(ub)ub.style.display=ro?"none":"";
     $("users-card").classList.toggle("hidden",!isAdmin());
+    $("webhooks-card").classList.toggle("hidden",!isAdmin());
+    $("power-card").classList.toggle("hidden",!isAdmin());
+    $("alerts-card").classList.toggle("hidden",!isAdmin());
+    $("flavors-card").classList.toggle("hidden",!isAdmin());
+    $("images-card").classList.toggle("hidden",!isAdmin());
+    $("instance-card").classList.toggle("hidden",!canWrite());
   }
   $("nu-add").addEventListener("click",addUser);
   async function loadUsers(){
@@ -511,6 +826,435 @@
     try{ await api("/api/keys/"+id,{method:"DELETE"});loadKeys();loadAudit(); }catch(e){alert(e.message);}
   }
 
+  // --- instance lifecycle ---
+  document.querySelectorAll("[data-inst]").forEach(b => b.addEventListener("click", () => instanceAction(b.getAttribute("data-inst"))));
+  $("inst-saveimg").addEventListener("click", async () => {
+    const name = prompt("Save this instance as an image named:");
+    if(!name) return;
+    try{
+      const r = await api("/api/instance/save-image",{method:"POST",body:{name}});
+      alert(r.ok ? ("saved image '"+(r.catalog_name||name)+"' -> "+r.ref) : ("save failed: "+(r.detail||r.error||"not available")));
+      loadImages(); loadAudit();
+    }catch(e){ alert(e.message); }
+  });
+  async function loadInstance(){
+    if(!canWrite()) return;
+    let s; try{ s = await api("/api/instance"); }catch(e){ return; }
+    const el = $("inst-status");
+    if(s.applicable === false){ el.textContent = "n/a — " + (s.detail||"local sandbox"); return; }
+    if(!s.exists){ el.textContent = "no instance yet (runs on first job/start) · image "+(s.image||"?")+" · "+(s.cpus||"?")+"cpu/"+(s.memory||"?"); return; }
+    el.textContent = "status: "+(s.status||"?")+" · "+(s.flavor||"default size")+" ("+(s.cpus||"?")+"cpu/"+(s.memory||"?")+") · "+(s.image||"");
+    el.style.color = s.running ? "var(--accent)" : "var(--warn)";
+    loadUsage();
+  }
+  async function loadUsage(){
+    let u; try{ u = await api("/api/usage"); }catch(e){ return; }
+    const secs = u.running_seconds||0;
+    $("inst-usage").textContent = "uptime: "+fmtDuration(secs)+" total"+
+      (u.currently_running?" · running now":"")+" · "+(u.sessions||0)+" sessions"+
+      (u.cost!=null?" · accrued $"+u.cost:"");
+    loadInstanceSsh();
+  }
+  async function loadInstanceSsh(){
+    let s; try{ s = await api("/api/instance/ssh"); }catch(e){ return; }
+    if(s.applicable === false){ $("inst-ssh").textContent = "ssh: n/a (docker mode only)"; return; }
+    $("inst-ssh").textContent = (s.command||("ssh -p "+s.port+" root@<host>"))+"  ("+(s.authorized_keys||0)+" key"+((s.authorized_keys||0)===1?"":"s")+")";
+  }
+  $("inst-ssh-sync").addEventListener("click", async () => {
+    try{ const r = await api("/api/instance/ssh/sync",{method:"POST"});
+      alert(r.ok ? ("synced "+(r.keys||0)+" key(s) into the instance") : ("sync: "+(r.error||r.detail||"not available")));
+      loadInstanceSsh(); loadAudit(); }
+    catch(e){ alert(e.message); }
+  });
+  async function instanceAction(action){
+    if(action==="recreate" && !confirm("Recreate your instance? The container is rebuilt from its image; /workspace files survive."))return;
+    try{
+      const r = await api("/api/instance/"+action,{method:"POST"});
+      if(r.ok===false) alert(action+": "+(r.detail||r.error||"not available"));
+      loadInstance(); loadAudit();
+    }catch(e){ alert(e.message); }
+  }
+
+  // --- billing ---
+  $("billing-pay").addEventListener("click", payNow);
+  async function loadBilling(){
+    let b; try{ b = await api("/api/billing"); }catch(e){ return; }
+    $("billing-mode").textContent = b.evaluation ? "(evaluation — free)" : "(live · "+(b.currency||"usd").toUpperCase()+")";
+    $("billing-info").textContent = b.evaluation
+      ? ("accrued $"+(b.accrued_cost||0)+" — not charged during evaluation")
+      : ("amount due: $"+(b.amount_due||0)+" "+(b.currency||"usd").toUpperCase());
+    $("billing-note").textContent = b.note || "";
+    $("billing-pay").classList.toggle("hidden", b.evaluation || !(b.amount_due>0));
+    loadInvoices();
+  }
+  async function payNow(){
+    try{
+      const r = await api("/api/billing/checkout",{method:"POST"});
+      if(r.url){ window.location.href = r.url; }     // Stripe Checkout
+      else alert(r.detail || "nothing to pay");
+    }catch(e){ alert(e.message); }
+  }
+  $("billing-invoice").addEventListener("click", async () => {
+    try{ const r = await api("/api/billing/invoice",{method:"POST"});
+      alert("invoice #"+r.id+": $"+r.amount+" ("+r.status+")"); loadInvoices(); loadBilling(); loadAudit(); }
+    catch(e){ alert(e.message); }
+  });
+  async function loadInvoices(){
+    let d; try{ d = await api("/api/billing/invoices"); }catch(e){ return; }
+    const tb = $("invoices-table").querySelector("tbody");
+    const xs = d.invoices || [];
+    tb.innerHTML = xs.length ? xs.map(i => "<tr><td>"+i.id+"</td><td>$"+i.amount+" "+(i.currency||"").toUpperCase()+
+      "</td><td><span class='tag "+(i.status==="paid"?"completed":i.status==="pending"?"running":"")+"'>"+i.status+"</span></td>"+
+      "<td>"+fmtWhen(i.created_at)+"</td></tr>").join("")
+      : "<tr><td colspan='4' class='muted'>no invoices</td></tr>";
+  }
+
+  // --- images catalog (admin only) ---
+  $("img-add").addEventListener("click", addImage);
+  async function loadImages(){
+    if(!isAdmin()) return;
+    let d; try{ d = await api("/api/images"); }catch(e){ return; }
+    const tb = $("images-table").querySelector("tbody");
+    const xs = d.images || [];
+    tb.innerHTML = xs.length ? xs.map(i => "<tr><td>"+escapeHtml(i.name)+"</td>"+
+      "<td class='cmd'>"+escapeHtml(i.ref)+"</td><td class='muted'>"+escapeHtml(i.description||"")+"</td>"+
+      "<td><button class='iconbtn danger' data-imgdel='"+escapeHtml(i.name)+"'>✕</button></td></tr>").join("")
+      : "<tr><td colspan='4' class='muted'>no images</td></tr>";
+    tb.querySelectorAll("[data-imgdel]").forEach(b => b.onclick = () => deleteImage(b.getAttribute("data-imgdel")));
+  }
+  async function addImage(){
+    const name=$("img-name").value.trim(), ref=$("img-ref").value.trim();
+    if(!name||!ref){ alert("name and ref required"); return; }
+    try{ await api("/api/images",{method:"POST",body:{name,ref,description:$("img-desc").value.trim()}});
+      $("img-name").value="";$("img-ref").value="";$("img-desc").value=""; loadImages(); loadAudit(); }
+    catch(e){ alert(e.message); }
+  }
+  async function deleteImage(name){
+    if(!confirm("Delete image "+name+"?"))return;
+    try{ await api("/api/images/"+encodeURIComponent(name),{method:"DELETE"}); loadImages(); }catch(e){alert(e.message);}
+  }
+
+  // --- flavors (admin only) ---
+  $("fl-add").addEventListener("click", addFlavor);
+  $("fl-assign-btn").addEventListener("click", assignFlavor);
+  async function loadFlavors(){
+    if(!isAdmin()) return;
+    let d; try{ d = await api("/api/flavors"); }catch(e){ return; }
+    const fs = d.flavors || [];
+    const tb = $("flavors-table").querySelector("tbody");
+    tb.innerHTML = fs.length ? fs.map(f => "<tr><td>"+escapeHtml(f.name)+"</td><td>"+escapeHtml(f.cpus)+"</td><td>"+escapeHtml(f.memory)+"</td>"+
+      "<td>$"+(f.price_per_hour||0)+"</td>"+
+      "<td><button class='iconbtn danger' data-fldel='"+escapeHtml(f.name)+"'>✕</button></td></tr>").join("")
+      : "<tr><td colspan='5' class='muted'>no flavors</td></tr>";
+    tb.querySelectorAll("[data-fldel]").forEach(b => b.onclick = () => deleteFlavor(b.getAttribute("data-fldel")));
+    // populate the assign dropdown
+    $("fl-assign").innerHTML = "<option value=''>(default size)</option>" + fs.map(f => "<option>"+escapeHtml(f.name)+"</option>").join("");
+  }
+  async function addFlavor(){
+    const name=$("fl-name").value.trim(); if(!name){ alert("name required"); return; }
+    try{ await api("/api/flavors",{method:"POST",body:{name,cpus:$("fl-cpus").value.trim()||"1",memory:$("fl-mem").value.trim()||"1g",price_per_hour:parseFloat($("fl-price").value)||0}});
+      $("fl-name").value="";$("fl-cpus").value="";$("fl-mem").value="";$("fl-price").value=""; loadFlavors(); loadAudit(); }
+    catch(e){ alert(e.message); }
+  }
+  async function deleteFlavor(name){
+    if(!confirm("Delete flavor "+name+"?"))return;
+    try{ await api("/api/flavors/"+encodeURIComponent(name),{method:"DELETE"}); loadFlavors(); }catch(e){alert(e.message);}
+  }
+  async function assignFlavor(){
+    const u=$("fl-user").value.trim(); if(!u){ alert("username required"); return; }
+    try{ await api("/api/users/"+encodeURIComponent(u)+"/flavor",{method:"POST",body:{flavor:$("fl-assign").value}});
+      alert("assigned "+($("fl-assign").value||"(default)")+" to "+u+" (applies on next container recreate)"); loadAudit(); }
+    catch(e){ alert(e.message); }
+  }
+
+  // --- alerts (admin only) ---
+  $("al-add").addEventListener("click", addAlert);
+  async function loadAlerts(){
+    if(!isAdmin()) return;
+    let d; try{ d = await api("/api/alerts"); }catch(e){ return; }
+    const tb = $("alerts-table").querySelector("tbody");
+    const rs = d.rules || [];
+    if(!rs.length){ tb.innerHTML = "<tr><td colspan='6' class='muted'>no alert rules</td></tr>"; return; }
+    tb.innerHTML = rs.map(r => "<tr>" +
+      "<td>"+r.id+"</td>" +
+      "<td><code>"+escapeHtml(r.metric+" "+r.op+" "+r.threshold)+"</code>"+(r.label?" <span class='muted'>"+escapeHtml(r.label)+"</span>":"")+(r.enabled?"":" <span class='tag error'>off</span>")+"</td>" +
+      "<td>"+r.for_sec+"s</td>" +
+      "<td>"+(r.breaching_since?"<span class='tag timeout'>yes</span>":"—")+"</td>" +
+      "<td>"+(r.last_fired_at?fmtWhen(r.last_fired_at):"—")+"</td>" +
+      "<td>" +
+        "<button class='iconbtn' data-altoggle='"+r.id+"' data-alon='"+r.enabled+"'>"+(r.enabled?"disable":"enable")+"</button> " +
+        "<button class='iconbtn danger' data-aldel='"+r.id+"'>✕</button>" +
+      "</td></tr>").join("");
+    tb.querySelectorAll("[data-altoggle]").forEach(b => b.onclick = () => toggleAlert(b.getAttribute("data-altoggle"), b.getAttribute("data-alon")!=="1"));
+    tb.querySelectorAll("[data-aldel]").forEach(b => b.onclick = () => deleteAlert(b.getAttribute("data-aldel")));
+  }
+  async function addAlert(){
+    const threshold = parseFloat($("al-threshold").value);
+    if(isNaN(threshold)){ alert("threshold required"); return; }
+    const body = { metric:$("al-metric").value, op:$("al-op").value,
+                   threshold, for_sec: parseInt($("al-for").value||"0",10)||0,
+                   label:$("al-label").value.trim() };
+    try{ await api("/api/alerts",{method:"POST",body}); $("al-threshold").value=""; $("al-label").value=""; loadAlerts(); loadAudit(); }
+    catch(e){ alert(e.message); }
+  }
+  async function toggleAlert(id, enabled){
+    try{ await api("/api/alerts/"+id+"/toggle",{method:"POST",body:{enabled}}); loadAlerts(); }catch(e){ alert(e.message); }
+  }
+  async function deleteAlert(id){
+    if(!confirm("Delete alert rule #"+id+"?"))return;
+    try{ await api("/api/alerts/"+id,{method:"DELETE"}); loadAlerts(); loadAudit(); }catch(e){alert(e.message);}
+  }
+
+  // --- power (admin only) ---
+  async function loadPower(){
+    if(!isAdmin()) return;
+    let d; try{ d = await api("/api/power"); }catch(e){ return; }
+    $("power-disabled").classList.toggle("hidden", d.enabled);
+    $("power-controls").classList.toggle("hidden", !d.enabled);
+  }
+  document.querySelectorAll("[data-power]").forEach(b => b.addEventListener("click", () => powerAction(b.getAttribute("data-power"))));
+  async function powerAction(action){
+    const delay = parseInt($("power-delay").value||"0", 10) || 0;
+    if(action !== "cancel"){
+      const msg = (action==="restart"||action==="shutdown")
+        ? "This will "+action.toUpperCase()+" the node"+(delay>0?(" in "+delay+"s"):" now")+".\nYou will lose this dashboard until it returns. Continue?"
+        : action.toUpperCase()+" the node now?";
+      if(!confirm(msg)) return;
+    }
+    try{
+      const r = await api("/api/power/"+action, { method:"POST", body:{ confirm:true, delay_sec:delay } });
+      if(r.ok===false && r.stderr) alert(action+": "+r.stderr);
+      else if(action==="cancel") alert("cancel: "+(r.ok?"ok":(r.stderr||"nothing pending")));
+      loadAudit();
+    }catch(e){ alert(e.message); }
+  }
+
+  // --- webhooks (admin only) ---
+  $("wh-add").addEventListener("click", addWebhook);
+  async function loadWebhooks(){
+    if(!isAdmin()) return;
+    let d; try{ d = await api("/api/webhooks"); }catch(e){ return; }
+    const tb = $("webhooks-table").querySelector("tbody");
+    const ws = d.webhooks || [];
+    if(!ws.length){ tb.innerHTML = "<tr><td colspan='6' class='muted'>no webhooks configured</td></tr>"; return; }
+    tb.innerHTML = ws.map(w => "<tr>" +
+      "<td>"+w.id+"</td>" +
+      "<td class='cmd' title='"+escapeHtml(w.url)+"'>"+escapeHtml(w.label||w.url)+"</td>" +
+      "<td><code>"+escapeHtml(w.events_filter||"*")+"</code></td>" +
+      "<td>"+(w.last_fired_at?fmtWhen(w.last_fired_at):"—")+"</td>" +
+      "<td>"+(w.last_status!=null?"<span class='tag "+(w.last_status>=200&&w.last_status<300?"completed":"error")+"'>"+w.last_status+"</span>":"—")+"</td>" +
+      "<td>" +
+        "<button class='iconbtn' data-whtoggle='"+w.id+"' data-whon='"+w.enabled+"'>"+(w.enabled?"disable":"enable")+"</button> " +
+        "<button class='iconbtn danger' data-whdel='"+w.id+"'>✕</button>" +
+      "</td></tr>").join("");
+    tb.querySelectorAll("[data-whtoggle]").forEach(b => b.onclick = () => toggleWebhook(b.getAttribute("data-whtoggle"), b.getAttribute("data-whon")!=="1"));
+    tb.querySelectorAll("[data-whdel]").forEach(b => b.onclick = () => deleteWebhook(b.getAttribute("data-whdel")));
+  }
+  async function addWebhook(){
+    const url = $("wh-url").value.trim();
+    if(!url){ alert("url required"); return; }
+    const body = { url, label: $("wh-label").value.trim(),
+                   events_filter: $("wh-filter").value.trim() || "*",
+                   secret: $("wh-secret").value };
+    try{
+      await api("/api/webhooks", { method:"POST", body });
+      $("wh-url").value=""; $("wh-label").value=""; $("wh-secret").value="";
+      loadWebhooks(); loadAudit();
+    }catch(e){ alert(e.message); }
+  }
+  async function toggleWebhook(id, enabled){
+    try{ await api("/api/webhooks/"+id+"/toggle",{method:"POST",body:{enabled}}); loadWebhooks(); }
+    catch(e){ alert(e.message); }
+  }
+  async function deleteWebhook(id){
+    if(!confirm("Delete webhook #"+id+"?"))return;
+    try{ await api("/api/webhooks/"+id,{method:"DELETE"}); loadWebhooks(); loadAudit(); }catch(e){alert(e.message);}
+  }
+
+  // --- workspace snapshots ---
+  $("snap-create").addEventListener("click", createSnapshot);
+  async function loadSnapshots(){
+    let d; try{ d = await api("/api/snapshots"); }catch(e){ return; }
+    const tb = $("snapshots-table").querySelector("tbody");
+    const ss = d.snapshots || [];
+    if(!ss.length){ tb.innerHTML = "<tr><td colspan='5' class='muted'>no snapshots yet</td></tr>"; return; }
+    tb.innerHTML = ss.map(s => "<tr>" +
+      "<td>"+s.id+"</td>" +
+      "<td>"+escapeHtml(s.label||"")+"</td>" +
+      "<td>"+fmtBytes(s.size_bytes)+"</td>" +
+      "<td>"+fmtWhen(s.created_at)+"</td>" +
+      "<td>" +
+        "<button class='iconbtn' data-snapdl='"+s.id+"'>↓</button> " +
+        (canWrite()?"<button class='iconbtn' data-snaprestore='"+s.id+"'>restore</button> " +
+        "<button class='iconbtn danger' data-snapdel='"+s.id+"'>✕</button>":"") +
+      "</td></tr>").join("");
+    tb.querySelectorAll("[data-snapdl]").forEach(b => b.onclick = () => downloadSnapshot(b.getAttribute("data-snapdl")));
+    tb.querySelectorAll("[data-snaprestore]").forEach(b => b.onclick = () => restoreSnapshot(b.getAttribute("data-snaprestore")));
+    tb.querySelectorAll("[data-snapdel]").forEach(b => b.onclick = () => deleteSnapshot(b.getAttribute("data-snapdel")));
+  }
+  async function createSnapshot(){
+    const label = $("snap-label").value.trim();
+    $("snap-create").disabled = true;
+    try{
+      await api("/api/snapshots", { method:"POST", body: { label } });
+      $("snap-label").value = "";
+      loadSnapshots(); loadAudit();
+    }catch(e){ alert(e.message); }
+    finally{ $("snap-create").disabled = false; }
+  }
+  async function downloadSnapshot(id){
+    const res = await fetch(apiBase()+"/api/snapshots/"+id+"/download",
+      {headers:{Authorization:"Bearer "+token()}});
+    if(!res.ok){ alert("download failed"); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "snapshot-"+id+".tar.gz";
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  }
+  async function restoreSnapshot(id){
+    if(!confirm("Restore snapshot #"+id+"?\nExtracts to .restored-<id>-<label>/ in your workspace (non-destructive)."))return;
+    try{
+      const r = await api("/api/snapshots/"+id+"/restore", { method:"POST" });
+      alert("restored to: "+r.restored_to);
+      loadFiles(); loadAudit();
+    }catch(e){ alert(e.message); }
+  }
+  async function deleteSnapshot(id){
+    if(!confirm("Delete snapshot #"+id+"? The archive is removed; the workspace is untouched."))return;
+    try{ await api("/api/snapshots/"+id,{method:"DELETE"});loadSnapshots();loadAudit(); }catch(e){alert(e.message);}
+  }
+
+  // --- API tokens ---
+  $("tok-add").addEventListener("click", mintToken);
+  function fmtTokTime(ts){ return ts ? new Date(ts*1000).toLocaleString() : "—"; }
+  async function loadTokens(){
+    let d; try{ d = await api("/api/tokens"); }catch(e){ return; }
+    const tb = $("tokens-table").querySelector("tbody");
+    const ts = d.tokens || [];
+    if(!ts.length){ tb.innerHTML = "<tr><td colspan='5' class='muted'>no tokens — mint one for CLI / CI access</td></tr>"; return; }
+    tb.innerHTML = ts.map(t => "<tr>" +
+      "<td>"+escapeHtml(t.label||"(unlabeled)")+"</td>" +
+      "<td>"+fmtTokTime(t.created_at)+"</td>" +
+      "<td>"+(t.expires_at?fmtTokTime(t.expires_at):"never")+"</td>" +
+      "<td>"+fmtTokTime(t.last_used_at)+"</td>" +
+      "<td><button class='iconbtn danger' data-deltok='"+t.id+"'>revoke</button></td></tr>").join("");
+    tb.querySelectorAll("[data-deltok]").forEach(b => b.onclick = () => revokeToken(b.getAttribute("data-deltok")));
+  }
+  async function mintToken(){
+    const label = $("tok-label").value.trim();
+    const daysRaw = $("tok-days").value.trim();
+    const body = { label };
+    if(daysRaw && Number(daysRaw) > 0) body.expires_in_days = Number(daysRaw);
+    try{
+      const r = await api("/api/tokens", { method:"POST", body });
+      const banner = $("tok-just-made");
+      banner.classList.remove("hidden");
+      banner.textContent = "STORE THIS NOW — only the hash is kept:\n\n" + r.token +
+        "\n\n(use as `Authorization: Bearer " + r.token + "`)";
+      $("tok-label").value = ""; $("tok-days").value = "";
+      loadTokens(); loadAudit();
+    }catch(e){ alert(e.message); }
+  }
+  async function revokeToken(id){
+    if(!confirm("Revoke token #"+id+"? Anyone using it loses access immediately."))return;
+    try{ await api("/api/tokens/"+id,{method:"DELETE"});loadTokens();loadAudit(); }catch(e){alert(e.message);}
+  }
+
+  // --- interactive shell (xterm.js + WebSocket) ---
+  let term=null, termFit=null, termSock=null, termBackend="pipes";
+  function sendTermSize(){
+    if(!termSock || termSock.readyState!==1 || !term) return;
+    termSock.send(JSON.stringify({resize:[term.cols||80, term.rows||24]}));
+  }
+  function wsBase(){
+    const base=apiBase(); if(!base) return null;
+    return base.replace(/^http/,"ws");
+  }
+  function ensureTerm(){
+    if(term) return;
+    const Term = window.Terminal;
+    const FitAddon = window.FitAddon && window.FitAddon.FitAddon;
+    if(!Term){ alert("terminal libs not loaded yet — try again"); return; }
+    term = new Term({
+      fontFamily:'ui-monospace,Consolas,monospace', fontSize:13,
+      theme:{background:'#000', foreground:'#e6edf6'},
+      convertEol:true, cursorBlink:true,
+    });
+    if(FitAddon){ termFit = new FitAddon(); term.loadAddon(termFit); }
+    term.open($("xterm"));
+    if(termFit){ try{ termFit.fit(); }catch(e){} }
+    term.onData(d => { if(termSock && termSock.readyState===1) termSock.send(JSON.stringify({in:d})); });
+  }
+  function openShell(){
+    const base=wsBase(); if(!base){ alert("set node URL first"); return; }
+    $("xterm").style.display="block";
+    ensureTerm();
+    if(!term) return;
+    term.clear(); term.writeln("connecting...");
+    termSock = new WebSocket(base + "/api/shell/ws?token=" + encodeURIComponent(token()));
+    termSock.onopen = () => {
+      $("shell-status").textContent="connected"; $("shell-status").style.color="var(--accent)";
+      $("shell-open").classList.add("hidden"); $("shell-close").classList.remove("hidden");
+      term.writeln("\x1b[2J\x1b[H[connected]");
+      sendTermSize();
+    };
+    termSock.onmessage = (ev) => {
+      try{
+        const m=JSON.parse(ev.data);
+        if(m.out!=null){
+          // Real PTY emits proper \r\n; pipes-only emits \n. Only translate
+          // bare \n (not preceded by \r) so we don't double-wrap PTY output.
+          term.write(termBackend==="pipes" ? m.out.replace(/\n/g,"\r\n") : m.out);
+        }
+        else if(m.exit!=null) term.writeln("\r\n[process exited: "+m.exit+"]");
+        else if(m.error) term.writeln("\r\n[error: "+m.error+"]");
+        else if(m.backend){ termBackend=m.backend; $("shell-status").textContent="connected ("+m.backend+")"; }
+      }catch(e){}
+    };
+    termSock.onclose = () => {
+      $("shell-status").textContent="disconnected"; $("shell-status").style.color="";
+      $("shell-open").classList.remove("hidden"); $("shell-close").classList.add("hidden");
+    };
+    termSock.onerror = () => { $("shell-status").textContent="error"; };
+  }
+  function closeShell(){ if(termSock) termSock.close(); }
+  $("shell-open").addEventListener("click", openShell);
+  $("shell-close").addEventListener("click", closeShell);
+  window.addEventListener("resize", () => {
+    if(termFit){ try{ termFit.fit(); }catch(e){} }
+    sendTermSize();
+  });
+  if(window.ResizeObserver && $("xterm")){
+    new ResizeObserver(()=>{ if(termFit){ try{ termFit.fit(); }catch(e){} } sendTermSize(); }).observe($("xterm"));
+  }
+
+  // --- metric history chart ---
+  let histTimer=null;
+  function buildLine(samples, key, w, h){
+    const pts=samples.filter(s=>s[key]!=null);
+    if(pts.length<2) return "";
+    const t0=samples[0].ts, t1=samples[samples.length-1].ts, dt=Math.max(1,t1-t0);
+    return pts.map(s=>{
+      const x=((s.ts-t0)/dt)*w;
+      const y=h - (Math.max(0,Math.min(100,s[key]))/100)*h;
+      return x.toFixed(1)+","+y.toFixed(1);
+    }).join(" ");
+  }
+  async function loadHistory(){
+    const hours=parseFloat($("hist-range").value||"6");
+    let d; try{ d=await api("/api/metrics/history?hours="+hours+"&limit=5000"); }
+    catch(e){ return; }
+    const s=d.samples||[];
+    const W=600,H=140;
+    $("hist-cpu").setAttribute("points",  buildLine(s,"cpu_percent",  W,H));
+    $("hist-mem").setAttribute("points",  buildLine(s,"mem_percent",  W,H));
+    $("hist-disk").setAttribute("points", buildLine(s,"disk_percent", W,H));
+    $("hist-empty").classList.toggle("hidden", s.length>=2);
+  }
+  if($("hist-range")){
+    $("hist-range").addEventListener("change", loadHistory);
+  }
+
   async function refresh(){
     // run independent reads in parallel — much snappier over a high-latency tunnel
     const r=await Promise.allSettled([loadMetrics(),loadGpu(),loadJobs(),loadProcesses(),loadAudit()]);
@@ -522,8 +1266,11 @@
       $("hdr-user").textContent=me.username+" · "+myRole;
       set2fa(!!me.twofa_enabled);
       applyRole();
-      await loadNode();await loadFiles();await loadUsers();await loadKeys();await refresh();
-      if(pollTimer)clearInterval(pollTimer);pollTimer=setInterval(refresh,3000);}
+      renderNav(); setView(curView);
+      await loadNode();await loadFiles();await loadUsers();await loadKeys();await loadTokens();await loadSnapshots();await loadWebhooks();await loadPower();await loadAlerts();await loadImages();await loadFlavors();await loadInstance();await loadBilling();await refresh();
+      await loadHistory();
+      if(pollTimer)clearInterval(pollTimer);pollTimer=setInterval(refresh,3000);
+      if(histTimer)clearInterval(histTimer);histTimer=setInterval(loadHistory,60000);}
     catch(e){logout();}
   }
   async function discover({silent=false}={}){
@@ -549,7 +1296,14 @@
   $("detect-btn").addEventListener("click",()=>discover());
 
   (async function boot(){
-    await discover({silent:true});
+    // If this page is served directly from a node (its own origin answers
+    // /api/health) and no base is configured, use that origin — so opening the
+    // node URL just works. ?base= and the discovery gist still take precedence.
+    if(!apiBase() && location.protocol.indexOf("http")===0){
+      try{ const r=await fetch(location.origin+"/api/health",{cache:"no-store"});
+        if(r.ok) localStorage.setItem(BASE_KEY, location.origin); }catch(e){}
+    }
+    if(!apiBase()) await discover({silent:true});
     if(token()&&apiBase()){ enterDashboard(); } else { showLogin(); }
   })();
   </script>
