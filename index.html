@@ -891,7 +891,15 @@
   // --- server pool: marketplace (rent) + provider onboarding (join) ---
   async function loadMarketplace(){
     let d; try{ d=await api("/api/pool/servers"); }catch(e){ return; }
-    const grid=$("mkt-grid"), servers=d.servers||[];
+    const grid=$("mkt-grid"), servers=d.servers||[], mine=d.mine||[];
+    // your active rentals (survives reload) with release buttons
+    if(mine.length){
+      $("mkt-rented").innerHTML="<b>Your rentals:</b> "+mine.map(s=>
+        "<span style='margin-right:14px;'>"+escapeHtml(s.node_name||s.provider_id)+" — "+
+        "<a href='"+escapeHtml(s.public_url||"#")+"' target='_blank' rel='noopener'>"+escapeHtml(s.public_url||"")+"</a> "+
+        "<button class='iconbtn' data-release='"+escapeHtml(s.provider_id)+"'>Release</button></span>").join("");
+      $("mkt-rented").querySelectorAll("[data-release]").forEach(b=>b.onclick=()=>releaseServer(b.getAttribute("data-release")));
+    } else { $("mkt-rented").innerHTML=""; }
     $("mkt-empty").classList.toggle("hidden", servers.length>0);
     grid.innerHTML=servers.map(s=>{
       const sp=s.specs||{};
@@ -911,10 +919,6 @@
     try{
       const r=await api("/api/pool/rent",{method:"POST",body:{provider_id:pid}});
       const s=r.server||{};
-      $("mkt-rented").innerHTML="✓ Rented <b>"+escapeHtml(s.node_name||pid)+"</b> — "+
-        "<a href='"+escapeHtml(s.public_url||"#")+"' target='_blank' rel='noopener'>"+escapeHtml(s.public_url||"")+"</a> "+
-        "<button class='iconbtn' data-release='"+escapeHtml(pid)+"'>Release</button>";
-      $("mkt-rented").querySelectorAll("[data-release]").forEach(b=>b.onclick=()=>releaseServer(b.getAttribute("data-release")));
       toast("rented "+(s.node_name||pid),"ok"); loadMarketplace();
     }catch(e){ toast(e.message,"error"); }
   }
