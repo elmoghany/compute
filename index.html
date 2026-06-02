@@ -555,6 +555,15 @@
         <h3>Marketplace <span class="muted">(rent a server from the pool)</span>
           <button id="mkt-refresh" class="iconbtn" title="Refresh" aria-label="Refresh marketplace" style="float:right;">↻</button>
         </h3>
+        <div id="mkt-invite" class="hidden" style="margin-bottom:14px;padding:13px 15px;border:1px solid var(--line-2);border-radius:10px;background:var(--bg-2);">
+          <div style="font-weight:600;font-size:13.5px;margin-bottom:3px;">Grow your pool — add a PC in one command</div>
+          <div class="hint" style="margin-bottom:8px;">Share this with anyone who wants to rent out their machine. They paste it into PowerShell (Windows) and their PC joins your pool automatically.</div>
+          <div style="display:flex;gap:8px;align-items:stretch;">
+            <code id="mkt-invite-cmd" style="flex:1;white-space:pre-wrap;word-break:break-all;padding:9px 11px;font-size:12px;line-height:1.5;"></code>
+            <button id="mkt-invite-copy" class="iconbtn" style="white-space:nowrap;">Copy</button>
+          </div>
+          <div id="mkt-invite-note" class="hint" style="margin-top:7px;"></div>
+        </div>
         <div id="mkt-rented" class="hint" style="margin-bottom:10px;"></div>
         <div id="mkt-empty" class="muted hidden" style="padding:8px 0;">No servers available right now — check back, or become a provider to add yours.</div>
         <div class="srv-grid" id="mkt-grid"></div>
@@ -566,14 +575,22 @@
         </h3>
         <div id="prov-banner" class="ready-banner no"><span>Running readiness checks…</span></div>
         <div class="checklist" id="prov-checks"></div>
-        <div id="prov-join-row" class="filerow hidden" style="margin-top:14px;align-items:center;">
-          <span class="muted">Price</span>
-          <input id="prov-price" type="number" step="0.01" min="0" placeholder="$/hr" style="width:110px;" />
-          <span class="muted">Region</span>
-          <input id="prov-region" placeholder="e.g. us-east" style="width:140px;" />
-          <span class="spacer"></span>
-          <button id="prov-join" class="iconbtn">Join the pool</button>
-          <button id="prov-leave" class="iconbtn danger hidden">Leave pool</button>
+        <div id="prov-join-wrap" class="hidden" style="margin-top:14px;">
+          <div class="filerow" style="align-items:center;">
+            <span class="muted" style="width:64px;">Hub URL</span>
+            <input id="prov-hub" placeholder="https://hub… (leave blank to host your own pool)" style="flex:1;" />
+            <span class="muted">Join code</span>
+            <input id="prov-code" placeholder="from the hub" style="width:160px;" />
+          </div>
+          <div class="filerow" style="align-items:center;margin-top:8px;">
+            <span class="muted" style="width:64px;">Price</span>
+            <input id="prov-price" type="number" step="0.01" min="0" placeholder="$/hr" style="width:110px;" />
+            <span class="muted">Region</span>
+            <input id="prov-region" placeholder="e.g. us-east" style="width:140px;" />
+            <span class="spacer"></span>
+            <button id="prov-join" class="iconbtn">Join the pool</button>
+            <button id="prov-leave" class="iconbtn danger hidden">Leave pool</button>
+          </div>
         </div>
         <div class="hint" style="margin-top:10px;">When every required check is green, set a price and join — your machine
           becomes rentable. Follow each fix above (enable VT-x in BIOS, install/start Docker, reboot…). See the
@@ -890,6 +907,7 @@
 
   // --- server pool: marketplace (rent) + provider onboarding (join) ---
   async function loadMarketplace(){
+    loadInvite();
     let d; try{ d=await api("/api/pool/servers"); }catch(e){ return; }
     const grid=$("mkt-grid"), servers=d.servers||[], mine=d.mine||[];
     // your active rentals (survives reload) with release buttons
@@ -928,6 +946,20 @@
     catch(e){ toast(e.message,"error"); }
   }
   if($("mkt-refresh")) $("mkt-refresh").addEventListener("click",loadMarketplace);
+  async function loadInvite(){
+    if(!isAdmin()){ $("mkt-invite").classList.add("hidden"); return; }
+    let inv; try{ inv=await api("/api/pool/invite"); }catch(e){ return; }
+    $("mkt-invite").classList.remove("hidden");
+    $("mkt-invite-cmd").textContent=inv.command||"";
+    $("mkt-invite-note").innerHTML = inv.has_code
+      ? "Hub: <code>"+escapeHtml(inv.hub_url||"")+"</code> · join code set."
+      : "⚠ Set <code>CC_POOL_JOIN_CODE</code> on this hub so others can join with a code (no account needed).";
+  }
+  if($("mkt-invite-copy")) $("mkt-invite-copy").addEventListener("click",()=>{
+    const t=$("mkt-invite-cmd").textContent;
+    if(navigator.clipboard){navigator.clipboard.writeText(t).then(()=>toast("copied","ok"),()=>toast("copy failed","error"));}
+    else{ toast("copy not supported","error"); }
+  });
 
   async function loadProviderChecks(){
     if(!isAdmin())return;
@@ -947,17 +979,20 @@
     // reflect join state
     let st; try{ st=await api("/api/provider/status"); }catch(e){ st=null; }
     const joined=st&&st.joined;
-    $("prov-join-row").classList.remove("hidden");
+    $("prov-join-wrap").classList.remove("hidden");
     $("prov-join").classList.toggle("hidden",!!joined);
     $("prov-leave").classList.toggle("hidden",!joined);
     $("prov-join").disabled=!rep.ready;
     if(st){ if(st.price_per_hour!=null&&!$("prov-price").value)$("prov-price").value=st.price_per_hour;
-            if(st.region&&!$("prov-region").value)$("prov-region").value=st.region; }
+            if(st.region&&!$("prov-region").value)$("prov-region").value=st.region;
+            if(st.hub_url&&st.hub_url!=="(self)"&&!$("prov-hub").value)$("prov-hub").value=st.hub_url; }
   }
   async function joinPool(){
     const body={};
     const p=parseFloat($("prov-price").value); if(!isNaN(p))body.price_per_hour=p;
     const r=$("prov-region").value.trim(); if(r)body.region=r;
+    const hub=$("prov-hub").value.trim(); if(hub)body.hub_url=hub;
+    const code=$("prov-code").value.trim(); if(code)body.join_code=code;
     try{ await api("/api/provider/join",{method:"POST",body}); toast("joined the pool","ok"); loadProviderChecks(); loadMarketplace(); }
     catch(e){
       let msg=e.message; try{const o=JSON.parse(msg); if(o.message)msg=o.message+" — see the checklist";}catch(_){}
