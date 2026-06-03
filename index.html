@@ -694,6 +694,36 @@
     inp.onkeydown=e=>{if(e.key==="Enter")done(inp.value);if(e.key==="Escape")done(null);};
     bd.onclick=e=>{if(e.target===bd)done(null);};
   });}
+  // Show the scoped login a rent auto-provisioned (v0.29 handshake). The
+  // password is returned ONCE, so surface it clearly with copy buttons.
+  function showRentCreds(server,access){
+    const root=document.getElementById("modal-root");root.innerHTML="";
+    const bd=document.createElement("div");bd.className="modal-backdrop";
+    const url=access.url||server.public_url||"";
+    const row=(label,val)=>val?("<div style='display:flex;align-items:center;gap:8px;margin:7px 0'>"+
+      "<span style='width:78px;color:var(--muted);font-size:12px'>"+label+"</span>"+
+      "<code style='flex:1;background:rgba(255,255,255,.06);padding:6px 9px;border-radius:6px;"+
+      "overflow:auto;font-size:12px;white-space:nowrap'>"+escapeHtml(val)+"</code>"+
+      "<button class='iconbtn' data-copy='"+escapeHtml(val)+"'>copy</button></div>"):"";
+    bd.innerHTML="<div class='modal' style='max-width:540px'>"+
+      "<h4>Rented "+escapeHtml(server.node_name||"server")+" ✓</h4>"+
+      "<div class='msg'>Your private, sandboxed login is ready. The password is shown "+
+      "<b>once</b> — copy it now.</div>"+
+      "<div style='margin:10px 0'>"+row("URL",url)+row("User",access.username)+row("Password",access.password)+"</div>"+
+      (access.note?("<div class='muted' style='font-size:12px'>"+escapeHtml(access.note)+"</div>"):"")+
+      "<div class='actions'>"+
+      (url?("<a class='ghost' href='"+escapeHtml(url)+"' target='_blank' rel='noopener' "+
+            "style='text-decoration:none;line-height:1.9'>Open node ↗</a>"):"")+
+      "<button data-ok>Done</button></div></div>";
+    root.appendChild(bd);
+    bd.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>{const t=b.getAttribute("data-copy");
+      if(navigator.clipboard){navigator.clipboard.writeText(t).then(()=>toast("copied","ok"),()=>toast("copy failed","error"));}
+      else{toast("copy not supported","error");}});
+    const done=()=>{root.innerHTML="";};
+    bd.querySelector("[data-ok]").onclick=done;
+    bd.onclick=e=>{if(e.target===bd)done();};
+    document.addEventListener("keydown",function esc(e){if(e.key==="Escape"){done();document.removeEventListener("keydown",esc);}});
+  }
 
   function showLogin(){$("login-view").classList.remove("hidden");$("dash-view").classList.add("hidden");
     $("api-base").value=localStorage.getItem(BASE_KEY)||"";}
@@ -933,11 +963,14 @@
     grid.querySelectorAll("[data-rent]").forEach(b=>b.onclick=()=>rentServer(b.getAttribute("data-rent")));
   }
   async function rentServer(pid){
-    if(!await uiConfirm("Rent this server? You can release it when done."))return;
+    if(!await uiConfirm("Rent this server? You'll get a private login; release it when done."))return;
     try{
       const r=await api("/api/pool/rent",{method:"POST",body:{provider_id:pid}});
-      const s=r.server||{};
-      toast("rented "+(s.node_name||pid),"ok"); loadMarketplace();
+      const s=r.server||{}, acc=r.access||null;
+      // v0.29 auto-provision: show the scoped creds the hub minted for you.
+      if(acc && acc.ok){ showRentCreds(s,acc); }
+      else { toast("rented "+(s.node_name||pid)+(s.public_url?(" — sign in at "+s.public_url):""),"ok"); }
+      loadMarketplace();
     }catch(e){ toast(e.message,"error"); }
   }
   async function releaseServer(pid){
