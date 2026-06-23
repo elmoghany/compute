@@ -1185,6 +1185,7 @@
     const ro=!canWrite();
     const rc=$("run-card");if(rc)rc.classList.toggle("hidden",ro);
     const sc=$("shell-card");if(sc)sc.classList.toggle("hidden",ro);
+    const sg=$("signing-card");if(sg)sg.classList.toggle("hidden",ro);
     const up=$("file-input"),ub=$("upload-btn");
     if(up)up.disabled=ro;if(ub)ub.style.display=ro?"none":"";
     $("users-card").classList.toggle("hidden",!isAdmin());
