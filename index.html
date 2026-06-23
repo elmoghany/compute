@@ -791,6 +791,12 @@
 
   async function loadNode(){
     const n=await api("/api/node");
+    const wasMac=nodeIsMac;
+    nodeIsMac = (n.system==="Darwin") || /mac|darwin/i.test(n.os||"");
+    if(nodeIsMac!==wasMac){                 // OS now known -> (un)reveal the signing nav
+      renderNav();
+      if(!nodeIsMac && curView==="signing") setView("overview");
+    }
     $("hdr-node").textContent=n.node_name;
     if($("hdr-node2")) $("hdr-node2").textContent=n.node_name;
     $("m-uptime").textContent=fmtDuration(n.uptime_seconds);
@@ -1149,7 +1155,8 @@
   ];
   const ALL_SECS=NAV.flatMap(n=>n.secs);
   let curView="overview";
-  function visibleNav(){ return NAV.filter(n=>!(n.admin&&!isAdmin())); }
+  let nodeIsMac=false;   // Code-signing is Xcode-only -> show that nav on macOS only
+  function visibleNav(){ return NAV.filter(n=>!(n.admin&&!isAdmin()) && !(n.id==="signing"&&!nodeIsMac)); }
   function renderNav(){
     let html="", lastGrp=null;
     visibleNav().forEach(n=>{
