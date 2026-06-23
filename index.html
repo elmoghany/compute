@@ -211,6 +211,9 @@
       font-size:13.5px;font-weight:500;margin-bottom:12px;border:1px solid var(--line-2);}
     .ready-banner.go{background:rgba(63,185,80,.10);border-color:rgba(63,185,80,.35);color:var(--ok);}
     .ready-banner.no{background:rgba(210,153,34,.08);border-color:rgba(210,153,34,.35);color:var(--warn);}
+    /* signing-card field hints */
+    .signhint{font-size:11.5px;color:var(--faint);margin-top:4px;line-height:1.45;}
+    .signhint code{font-size:11px;} .signhint a{color:var(--accent);}
     /* marketplace server cards */
     .srv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:13px;}
     .srv{border:1px solid var(--line);border-radius:11px;padding:15px;background:var(--bg-2);
@@ -314,6 +317,43 @@
           <button id="cancel-btn" class="ghost hidden">Cancel</button>
         </div>
         <pre id="run-output" class="output hidden"></pre>
+      </section>
+
+      <section class="card hidden" id="signing-card">
+        <h3>Apple code signing <span class="muted">(rent-a-Mac → Xcode builds)</span></h3>
+        <div class="muted" style="margin:-2px 0 14px;font-size:13px;line-height:1.5;">
+          Upload your App Store Connect API key + ids once, and <code>xcodebuild</code> /
+          <code>notarytool</code> can build, sign &amp; notarize on this Mac — no terminal setup.
+          Stored privately for your rental.
+        </div>
+        <div id="signing-status" style="margin-bottom:13px;"></div>
+        <form id="signing-form" style="display:flex;flex-direction:column;gap:14px;max-width:640px;">
+          <div>
+            <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;">API key file (.p8)</label>
+            <input id="sign-p8" type="file" accept=".p8" />
+            <div class="signhint">App Store Connect → <b>Users and Access → Integrations → App Store Connect API</b> → <b>Generate API Key</b>, then download <code>AuthKey_XXXX.p8</code> (downloadable only once). <a href="https://appstoreconnect.apple.com/access/integrations/api" target="_blank" rel="noopener">open ↗</a></div>
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;">Key ID</label>
+            <input id="sign-keyid" placeholder="e.g. V79DJ94S58" style="width:240px;max-width:100%;" />
+            <div class="signhint">Same Integrations page — the <b>Key ID</b> shown next to your key (10 chars).</div>
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;">Issuer ID</label>
+            <input id="sign-issuer" placeholder="e.g. 3bb16e93-e293-4401-aab7-dd967cdcc9db" style="width:380px;max-width:100%;" />
+            <div class="signhint">Same Integrations page — <b>Issuer ID</b> shown at the top (one UUID for all your keys).</div>
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px;">Team ID</label>
+            <input id="sign-team" placeholder="e.g. 4Q7GP3V2BN" style="width:240px;max-width:100%;" />
+            <div class="signhint">developer.apple.com → <b>Membership details</b> → <b>Team ID</b> (10 chars). <a href="https://developer.apple.com/account" target="_blank" rel="noopener">open ↗</a></div>
+          </div>
+          <div class="filerow">
+            <button id="sign-save" type="submit">Save signing config</button>
+            <button id="sign-clear" type="button" class="iconbtn danger hidden">Clear</button>
+          </div>
+        </form>
+        <pre id="signing-cmd" class="output hidden" style="margin-top:14px;"></pre>
       </section>
       <section class="row" id="sec-filesrow">
         <div class="card">
@@ -994,6 +1034,57 @@
     else{ toast("copy not supported","error"); }
   });
 
+  // --- Apple code signing (rent-a-Mac for Xcode) -----------------------
+  async function loadSigning(){
+    let s; try{ s=await api("/api/build/signing"); }catch(e){ return; }
+    // pre-fill the ids we already have (never the key) — choose-for-the-user.
+    if(s.key_id)$("sign-keyid").value=s.key_id;
+    if(s.issuer_id)$("sign-issuer").value=s.issuer_id;
+    if(s.team_id)$("sign-team").value=s.team_id;
+    const st=$("signing-status"), cmd=$("signing-cmd");
+    if(s.configured){
+      st.innerHTML="<span class='tag completed'>configured</span> Team <code>"+escapeHtml(s.team_id)+
+        "</code> · Key <code>"+escapeHtml(s.key_id)+"</code> · key uploaded ✓";
+      $("sign-clear").classList.remove("hidden");
+      cmd.classList.remove("hidden");
+      cmd.textContent=
+        "# DEVELOPMENT_TEAM + the key path/id/issuer are already in your build env.\n"+
+        "# archive (auto-signing):\n"+
+        "xcodebuild -scheme <Scheme> -destination 'generic/platform=iOS' \\\n"+
+        "  -allowProvisioningUpdates archive -archivePath build/App.xcarchive\n\n"+
+        "# notarize with your API key:\n"+
+        "xcrun notarytool submit <App.zip> --wait \\\n"+
+        "  --key \""+s.key_path+"\" --key-id "+s.key_id+" --issuer "+s.issuer_id;
+    } else {
+      st.innerHTML="<span class='tag'>not configured</span> add your key + ids to enable Xcode signing.";
+      $("sign-clear").classList.add("hidden"); cmd.classList.add("hidden");
+    }
+  }
+  if($("signing-form")) $("signing-form").addEventListener("submit",async(e)=>{
+    e.preventDefault();
+    const team=$("sign-team").value.trim(), key=$("sign-keyid").value.trim(), iss=$("sign-issuer").value.trim();
+    if(!team||!key||!iss){ toast("Team ID, Key ID and Issuer ID are all required","error"); return; }
+    const fd=new FormData(); fd.append("team_id",team); fd.append("key_id",key); fd.append("issuer_id",iss);
+    const f=$("sign-p8").files[0]; if(f) fd.append("file",f);
+    $("sign-save").disabled=true;
+    try{
+      const res=await fetch(apiBase()+"/api/build/signing",
+        {method:"POST",headers:{Authorization:"Bearer "+token()},body:fd});
+      const d=await res.json().catch(()=>({}));
+      if(!res.ok) throw new Error(d.detail||res.statusText);
+      if(!d.key_uploaded){ toast("ids saved — upload the .p8 to finish","ok"); }
+      else { toast("signing config saved","ok"); }
+      $("sign-p8").value=""; loadSigning();
+    }catch(err){ toast(err.message,"error"); } finally{ $("sign-save").disabled=false; }
+  });
+  if($("sign-clear")) $("sign-clear").addEventListener("click",async()=>{
+    if(!await uiConfirm("Clear signing config and remove the uploaded key?",{danger:true,ok:"Clear"}))return;
+    try{ await api("/api/build/signing",{method:"DELETE"});
+      ["sign-keyid","sign-issuer","sign-team","sign-p8"].forEach(i=>$(i).value="");
+      toast("cleared","ok"); loadSigning(); }
+    catch(e){ toast(e.message,"error"); }
+  });
+
   async function loadProviderChecks(){
     if(!isAdmin())return;
     let rep; try{ rep=await api("/api/provider/checks"); }catch(e){ return; }
@@ -1047,6 +1138,7 @@
     {id:"overview", label:"Overview", ic:"◧", grp:"Compute", secs:["sec-metrics","sec-noderow","sec-history"]},
     {id:"instance", label:"Instance", ic:"▣", grp:"Compute", secs:["instance-card","snapshots-card"], write:true},
     {id:"terminal", label:"Terminal", ic:"❯", grp:"Compute", secs:["shell-card","run-card"], write:true},
+    {id:"signing", label:"Code signing", ic:"⌥", grp:"Compute", secs:["signing-card"], write:true},
     {id:"files",    label:"Files",    ic:"▤", grp:"Compute", secs:["sec-filesrow"]},
     {id:"marketplace",label:"Marketplace",ic:"⊞", grp:"Pool", secs:["marketplace-card"]},
     {id:"provider", label:"Become provider", ic:"⊹", grp:"Pool", secs:["provider-card"], admin:true},
@@ -1673,7 +1765,7 @@
       set2fa(!!me.twofa_enabled);
       applyRole();
       renderNav(); setView(curView);
-      await loadNode();await loadFiles();await loadUsers();await loadKeys();await loadTokens();await loadSnapshots();await loadWebhooks();await loadPower();await loadAlerts();await loadImages();await loadFlavors();await loadInstance();await loadBilling();await loadMarketplace();await loadProviderChecks();await refresh();
+      await loadNode();await loadFiles();await loadUsers();await loadKeys();await loadTokens();await loadSnapshots();await loadWebhooks();await loadPower();await loadAlerts();await loadImages();await loadFlavors();await loadInstance();await loadBilling();await loadMarketplace();await loadProviderChecks();await loadSigning();await refresh();
       await loadHistory();
       if(pollTimer)clearInterval(pollTimer);pollTimer=setInterval(refresh,3000);
       if(histTimer)clearInterval(histTimer);histTimer=setInterval(loadHistory,60000);
