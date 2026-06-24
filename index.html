@@ -528,6 +528,14 @@
       </section>
       <section class="card" id="sec-security">
         <h3>Security</h3>
+        <h3 style="font-size:14px;margin-top:4px;">Change password <span class="muted">(<span id="pw-who">your account</span>)</span></h3>
+        <div class="filerow" style="flex-wrap:wrap;">
+          <input id="pw-old" type="password" placeholder="current password" autocomplete="current-password" style="flex:1;min-width:160px;" />
+          <input id="pw-new" type="password" placeholder="new password (8+ chars)" autocomplete="new-password" style="flex:1;min-width:160px;" />
+          <button id="pw-change-btn" class="iconbtn">Change password</button>
+        </div>
+        <div class="hint" id="pw-hint" style="margin-bottom:6px;">Leave “current password” blank only if your account has none yet (e.g. a Google-only login adding one).</div>
+        <h3 style="margin-top:16px;">Two-factor</h3>
         <div class="filerow">
           <span id="twofa-status" class="muted">two-factor: checking…</span>
           <button id="twofa-btn" class="iconbtn">…</button>
@@ -660,6 +668,11 @@
              script, so this is all that's needed. Visible to every signed-in user. -->
         <div id="prov-addmachine">
           <div class="hint" style="margin-bottom:9px;">Add <b>your own</b> machine — a Windows PC, a Linux box, or a Mac (for Xcode/native builds) — to the marketplace. Run the one command below <b>on that machine</b>; it downloads the node, joins this hub, and your machine shows up in the <b>Marketplace</b> for rent.</div>
+          <div class="filerow" style="align-items:center;margin-bottom:9px;">
+            <span class="muted" style="width:92px;">Login</span>
+            <span id="node-admin-label" class="muted" style="font-size:12px;">user = your email</span>
+            <input id="node-pass" type="password" placeholder="set a password (optional; random if blank)" autocomplete="new-password" style="flex:1;min-width:180px;" />
+          </div>
           <div class="filerow" style="align-items:center;">
             <span class="muted" style="width:92px;">macOS / Linux</span>
             <code id="join-cmd-sh" style="flex:1;white-space:pre-wrap;word-break:break-all;padding:9px 11px;font-size:12px;line-height:1.5;"></code>
@@ -1172,19 +1185,32 @@
   });
 
   // --- add-a-machine: account-based install command (no join code) ---------
+  let _enrollSh="", _enrollPs="";
   async function loadEnroll(){
     const sh=$("join-cmd-sh"), ps=$("join-cmd-ps");
     if(!sh&&!ps) return;
     try{
-      const e=await api("/api/pool/enroll",{method:"POST"});   // mints YOUR token + command
-      if(sh) sh.textContent=e.command_sh||"";
-      if(ps) ps.textContent=e.command_ps||"";
+      const e=await api("/api/pool/enroll",{method:"POST"});   // mints YOUR token + command (user=your email)
+      _enrollSh=e.command_sh||""; _enrollPs=e.command_ps||"";
+      if($("node-admin-label")&&e.node_admin) $("node-admin-label").textContent="user = "+e.node_admin;
     }catch(err){
       const base=(apiBase()||location.origin).replace(/\/+$/,"");
-      if(sh) sh.textContent="curl -fsSL "+base+"/join.sh | bash";
-      if(ps) ps.textContent="irm "+base+"/join.ps1 | iex";
+      _enrollSh="curl -fsSL "+base+"/join.sh | bash";
+      _enrollPs="irm "+base+"/join.ps1 | iex";
     }
+    renderJoinCmd();
   }
+  // The password (if the user sets one) is injected CLIENT-SIDE only — never sent
+  // to the hub. Shell-escaped for the "…" context in each command.
+  function renderJoinCmd(){
+    const pw=($("node-pass")&&$("node-pass").value)||"";
+    const shEsc=s=>s.replace(/([\\"$`])/g,"\\$1");
+    const psEsc=s=>s.replace(/([`"$])/g,"`$1");
+    const sh=$("join-cmd-sh"), ps=$("join-cmd-ps");
+    if(sh) sh.textContent=(pw?('CC_NODE_PASSWORD="'+shEsc(pw)+'" '):"")+_enrollSh;
+    if(ps) ps.textContent=(pw?('$env:CC_NODE_PASSWORD="'+psEsc(pw)+'"; '):"")+_enrollPs;
+  }
+  if($("node-pass")) $("node-pass").addEventListener("input",renderJoinCmd);
 
   // --- agent detection: prove the agent is really running (not just copied) --
   let _detectTimer=null;
@@ -1515,6 +1541,19 @@
       catch(e){toast(e.message,"error");}
     }
   }
+
+  // --- change password ---
+  async function changePassword(){
+    const oldp=$("pw-old").value, newp=$("pw-new").value;
+    if(newp.length<8){ toast("new password must be at least 8 characters","error"); return; }
+    const btn=$("pw-change-btn"); if(btn) btn.disabled=true;
+    try{
+      await api("/api/me/password",{method:"POST",body:{old_password:oldp,new_password:newp}});
+      $("pw-old").value=""; $("pw-new").value=""; toast("password changed ✓","ok");
+    }catch(e){ toast(e.message,"error"); }
+    finally{ if(btn) btn.disabled=false; }
+  }
+  if($("pw-change-btn")) $("pw-change-btn").addEventListener("click",changePassword);
 
   // --- SSH keys ---
   $("addkey-btn").addEventListener("click",addKey);
@@ -2030,6 +2069,7 @@
     showDash();
     try{const me=await api("/api/me");myRole=me.role||"viewer";
       $("hdr-user").textContent=me.username+" · "+myRole;
+      if($("pw-who")) $("pw-who").textContent=me.username;
       set2fa(!!me.twofa_enabled);
       applyRole();
       renderNav(); setView(curView);
