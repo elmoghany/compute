@@ -701,6 +701,20 @@
           <div class="hint" style="margin-top:10px;">When every required check is green, set a price and join — this machine
             becomes rentable. Follow each fix above (enable VT-x in BIOS, install/start Docker, reboot…). See the
             <a href="https://github.com/elmoghany/cloudcompute#part-2--providers-put-your-compute-on-the-list" target="_blank" rel="noopener">provider guide</a> for full steps.</div>
+
+          <!-- Optional macOS capability: offer Xcode Cloud builds. Hidden unless this
+               node is a Mac. Joining for CPU/GPU never needs any of this. -->
+          <div id="xcode-panel" class="hidden" style="margin-top:16px;border-top:1px dashed var(--line);padding-top:13px;">
+            <h3 style="font-size:14px;">Offer Xcode Cloud builds <span class="muted">(macOS · optional)</span>
+              <button id="xc-refresh" class="iconbtn" title="Re-check" style="float:right;">↻ Re-check</button>
+            </h3>
+            <div id="xc-status" class="ready-banner no"><span>Checking…</span></div>
+            <div id="xc-steps" class="hint" style="margin-top:8px;"></div>
+            <div class="filerow" style="margin-top:8px;align-items:center;">
+              <button id="xc-setup" class="iconbtn">Set up Xcode</button>
+              <span class="muted" style="font-size:12px;">Automates the command-line tools; full Xcode (~15 GB) installs from the App Store. Renters then see an “Xcode” badge on this machine.</span>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -1097,9 +1111,10 @@
     grid.innerHTML=servers.map(s=>{
       const sp=s.specs||{};
       const gpu=(sp.gpus&&sp.gpus.length)?(" · "+sp.gpus.length+"× "+escapeHtml(sp.gpus[0].name||"GPU")):"";
+      const xcode=(sp.xcode&&sp.xcode.capable)?" <span class='tag completed' style='font-size:10px;vertical-align:1px;' title='"+escapeHtml("Xcode "+(sp.xcode.version||"")).trim()+"'>Xcode</span>":"";
       const price=Number(s.price_per_hour||0);
       return "<div class='srv'><div class='nm'><span class='state-badge run'><span class='d'></span>online</span>"+
-        escapeHtml(s.node_name||s.provider_id)+"</div>"+
+        escapeHtml(s.node_name||s.provider_id)+xcode+"</div>"+
         "<div class='specs'>"+(sp.cpus||"?")+" vCPU · "+(sp.memory_gb||"?")+" GB RAM"+gpu+
         (sp.os?("<br>"+escapeHtml(sp.os)):"")+(s.region?(" · "+escapeHtml(s.region)):"")+"</div>"+
         "<div class='price'>"+(price>0?("$"+price.toFixed(2)+" <small>/hr</small>"):"<small>free</small>")+"</div>"+
@@ -1223,6 +1238,31 @@
   }
   if($("ir-refresh")) $("ir-refresh").addEventListener("click",loadInstallReports);
   if($("ir-fails")) $("ir-fails").addEventListener("change",loadInstallReports);
+
+  // --- offer Xcode builds (macOS provider capability) ----------------------
+  async function loadXcode(){
+    const panel=$("xcode-panel"); if(!panel) return;
+    let st; try{ st=await api("/api/provider/xcode"); }catch(e){ panel.classList.add("hidden"); return; }
+    if(!st.supported){ panel.classList.add("hidden"); return; }   // not a Mac
+    panel.classList.remove("hidden");
+    const sb=$("xc-status");
+    sb.className="ready-banner "+(st.capable?"ok":"no");
+    sb.innerHTML="<span>"+(st.capable?"✓ ":"")+escapeHtml(st.detail||"")+"</span>";
+    $("xc-steps").innerHTML=(st.next_steps||[]).map(s=>"• "+escapeHtml(s)).join("<br>");
+    $("xc-setup").style.display=st.capable?"none":"";
+  }
+  async function setupXcode(){
+    const btn=$("xc-setup"); if(btn) btn.disabled=true;
+    try{ const r=await api("/api/provider/xcode-setup",{method:"POST"});
+      toast(r.detail||"done", r.ok?"ok":"info");
+      const steps=[].concat(r.ran||[],(r.manual||[])).map(s=>"• "+escapeHtml(s));
+      if(steps.length) $("xc-steps").innerHTML=steps.join("<br>");
+      await loadXcode(); loadMarketplace();
+    }catch(e){ toast(e.message,"error"); }
+    finally{ if(btn) btn.disabled=false; }
+  }
+  if($("xc-setup")) $("xc-setup").addEventListener("click",setupXcode);
+  if($("xc-refresh")) $("xc-refresh").addEventListener("click",loadXcode);
 
   // --- Apple code signing (rent-a-Mac for Xcode) -----------------------
   async function loadSigning(){
@@ -1995,7 +2035,7 @@
         await loadFiles();await loadUsers();await loadKeys();await loadTokens();
         await loadSnapshots();await loadWebhooks();await loadPower();await loadAlerts();
         await loadImages();await loadFlavors();await loadInstance();
-        await loadProviderChecks();await loadSigning();await loadInstallReports();
+        await loadProviderChecks();await loadSigning();await loadInstallReports();await loadXcode();
       }
       syncPolling();   // live node polling only while an operator views Overview
     }
