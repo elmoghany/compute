@@ -590,6 +590,20 @@
         <div class="hint">Restart/Shutdown take the whole node down — you'll lose this dashboard until it's back. Delay gives a window to "Cancel pending".</div>
       </section>
 
+      <section class="card hidden" id="installreports-card">
+        <h3>Installer reports <span class="muted">(admin · provider onboarding diagnostics)</span>
+          <button id="ir-refresh" class="iconbtn" title="Refresh" style="float:right;">↻</button>
+          <label class="muted" style="float:right;margin-right:12px;font-size:12px;cursor:pointer;"><input type="checkbox" id="ir-fails" style="vertical-align:-1px;"/> failures only</label>
+        </h3>
+        <div id="ir-empty" class="muted hidden" style="padding:6px 0;">No installer runs reported yet.</div>
+        <table class="jobs" id="ir-table">
+          <thead><tr><th>when</th><th>result</th><th>step</th><th>exit</th><th>os / arch</th><th>python</th><th>user</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <pre id="ir-detail" class="hidden" style="margin-top:10px;padding:11px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;font-size:12px;white-space:pre-wrap;word-break:break-word;max-height:260px;overflow:auto;"></pre>
+        <div class="hint">A red row = an install that failed at that step. Click a row for the redacted log tail. Reported by <code>join.sh</code>/<code>join.ps1</code> (token/password/join-code stripped).</div>
+      </section>
+
       <section class="card hidden" id="webhooks-card">
         <h3>Webhooks <span class="muted">(admin · audit event fan-out)</span></h3>
         <div class="filerow">
@@ -1184,6 +1198,32 @@
     if(navigator.clipboard){navigator.clipboard.writeText(el.textContent).then(()=>toast("copied","ok"),()=>toast("copy failed","error"));}
   });
 
+  // --- installer telemetry (admin): triage what breaks for real users ------
+  async function loadInstallReports(){
+    if(!isAdmin())return;
+    const fails=$("ir-fails")&&$("ir-fails").checked;
+    let d; try{ d=await api("/api/pool/install-reports"+(fails?"?failures_only=true":"")); }catch(e){ return; }
+    const reps=d.reports||[];
+    $("ir-empty").classList.toggle("hidden", reps.length>0);
+    const tb=$("ir-table").querySelector("tbody");
+    tb.innerHTML=reps.map((r,i)=>{
+      const when=new Date((r.ts||0)*1000).toLocaleString();
+      const res=r.ok?"<span class='tag completed'>ok</span>":"<span class='tag failed'>failed</span>";
+      const bg=r.ok?"":"background:rgba(255,90,90,.07);";
+      return "<tr data-ir='"+i+"' style='cursor:pointer;"+bg+"'>"+
+        "<td>"+escapeHtml(when)+"</td><td>"+res+"</td><td>"+escapeHtml(r.step||"")+"</td>"+
+        "<td>"+(r.exit_code==null?"":escapeHtml(String(r.exit_code)))+"</td>"+
+        "<td>"+escapeHtml(((r.os||"")+" "+(r.arch||"")).trim()+" · "+(r.platform||""))+"</td>"+
+        "<td>"+escapeHtml(r.python||"")+"</td><td>"+escapeHtml(r.owner_user||"—")+"</td></tr>";
+    }).join("");
+    tb.querySelectorAll("[data-ir]").forEach(tr=>tr.onclick=()=>{
+      const r=reps[+tr.getAttribute("data-ir")], pre=$("ir-detail");
+      pre.textContent=r.log_tail||"(no log captured)"; pre.classList.remove("hidden");
+    });
+  }
+  if($("ir-refresh")) $("ir-refresh").addEventListener("click",loadInstallReports);
+  if($("ir-fails")) $("ir-fails").addEventListener("change",loadInstallReports);
+
   // --- Apple code signing (rent-a-Mac for Xcode) -----------------------
   async function loadSigning(){
     let s; try{ s=await api("/api/build/signing"); }catch(e){ return; }
@@ -1295,7 +1335,7 @@
     {id:"jobs",     label:"Activity", ic:"≡", grp:"Account", secs:["sec-jobs","sec-audit"]},
     {id:"billing",  label:"Billing",  ic:"$", grp:"Account", secs:["billing-card"]},
     {id:"security", label:"Security", ic:"⚿", grp:"Account", secs:["sec-security"]},
-    {id:"admin",    label:"Admin",    ic:"⚙", grp:"Admin",   secs:["users-card","images-card","flavors-card","alerts-card","webhooks-card","power-card"], admin:true},
+    {id:"admin",    label:"Admin",    ic:"⚙", grp:"Admin",   secs:["users-card","images-card","flavors-card","alerts-card","webhooks-card","power-card","installreports-card"], admin:true},
   ];
   const ALL_SECS=NAV.flatMap(n=>n.secs);
   let curView="overview";
@@ -1368,6 +1408,7 @@
     $("alerts-card").classList.toggle("hidden",!isAdmin());
     $("flavors-card").classList.toggle("hidden",!isAdmin());
     $("images-card").classList.toggle("hidden",!isAdmin());
+    $("installreports-card").classList.toggle("hidden",!isAdmin());
     $("instance-card").classList.toggle("hidden",!canWrite());
     $("marketplace-card").classList.remove("hidden");      // any user can rent
     $("provider-card").classList.remove("hidden");         // anyone can add a machine
@@ -1954,7 +1995,7 @@
         await loadFiles();await loadUsers();await loadKeys();await loadTokens();
         await loadSnapshots();await loadWebhooks();await loadPower();await loadAlerts();
         await loadImages();await loadFlavors();await loadInstance();
-        await loadProviderChecks();await loadSigning();
+        await loadProviderChecks();await loadSigning();await loadInstallReports();
       }
       syncPolling();   // live node polling only while an operator views Overview
     }
