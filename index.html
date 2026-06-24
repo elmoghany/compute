@@ -638,31 +638,56 @@
       </section>
 
       <section class="card hidden" id="provider-card">
-        <h3>Become a provider <span class="muted">(put this PC in the pool)</span>
-          <button id="prov-refresh" class="iconbtn" title="Re-run checks" aria-label="Re-run checks" style="float:right;">↻ Re-check</button>
-        </h3>
-        <div id="prov-banner" class="ready-banner no"><span>Running readiness checks…</span></div>
-        <div class="checklist" id="prov-checks"></div>
-        <div id="prov-join-wrap" class="hidden" style="margin-top:14px;">
+        <h3>Become a provider <span class="muted">(add a machine to the marketplace)</span></h3>
+
+        <!-- Add YOUR OWN machine. Run the command ON the machine you want to rent
+             out (Win/Linux/Mac). The hub bakes its URL + join code into the
+             script, so this is all that's needed. Visible to every signed-in user. -->
+        <div id="prov-addmachine">
+          <div class="hint" style="margin-bottom:9px;">Add <b>your own</b> machine — a Windows PC, a Linux box, or a Mac (for Xcode/native builds) — to the marketplace. Run the one command below <b>on that machine</b>; it downloads the node, joins this hub, and your machine shows up in the <b>Marketplace</b> for rent.</div>
           <div class="filerow" style="align-items:center;">
-            <span class="muted" style="width:64px;">Hub URL</span>
-            <input id="prov-hub" placeholder="https://hub… (leave blank to host your own pool)" style="flex:1;" />
-            <span class="muted">Join code</span>
-            <input id="prov-code" placeholder="from the hub" style="width:160px;" />
+            <span class="muted" style="width:92px;">macOS / Linux</span>
+            <code id="join-cmd-sh" style="flex:1;white-space:pre-wrap;word-break:break-all;padding:9px 11px;font-size:12px;line-height:1.5;"></code>
+            <button class="iconbtn" data-copy="join-cmd-sh" style="white-space:nowrap;">Copy</button>
           </div>
-          <div class="filerow" style="align-items:center;margin-top:8px;">
-            <span class="muted" style="width:64px;">Price</span>
-            <input id="prov-price" type="number" step="0.01" min="0" placeholder="$/hr" style="width:110px;" />
-            <span class="muted">Region</span>
-            <input id="prov-region" placeholder="e.g. us-east" style="width:140px;" />
-            <span class="spacer"></span>
-            <button id="prov-join" class="iconbtn">Join the pool</button>
-            <button id="prov-leave" class="iconbtn danger hidden">Leave pool</button>
+          <div class="filerow" style="align-items:center;margin-top:6px;">
+            <span class="muted" style="width:92px;">Windows</span>
+            <code id="join-cmd-ps" style="flex:1;white-space:pre-wrap;word-break:break-all;padding:9px 11px;font-size:12px;line-height:1.5;"></code>
+            <button class="iconbtn" data-copy="join-cmd-ps" style="white-space:nowrap;">Copy</button>
           </div>
+          <div class="hint" style="margin-top:7px;">A Mac joins with the <b>local</b> sandbox so it can run <code>xcodebuild</code> natively. Once it appears in the Marketplace, rent it like any other machine.</div>
+          <div id="agent-status" class="ready-banner no" style="margin-top:11px;"><span>Run the command above — this page will detect your agent automatically.</span></div>
         </div>
-        <div class="hint" style="margin-top:10px;">When every required check is green, set a price and join — your machine
-          becomes rentable. Follow each fix above (enable VT-x in BIOS, install/start Docker, reboot…). See the
-          <a href="https://github.com/elmoghany/cloudcompute#part-2--providers-put-your-compute-on-the-list" target="_blank" rel="noopener">provider guide</a> for full steps.</div>
+
+        <!-- Put THIS machine (the one serving this dashboard) in the pool. Only the
+             machine's operator/admin sees this — it shows that host's own readiness. -->
+        <div id="prov-thishost" style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px;">
+          <h3 style="font-size:14px;">Put this machine in the pool
+            <button id="prov-refresh" class="iconbtn" title="Re-run checks" aria-label="Re-run checks" style="float:right;">↻ Re-check</button>
+          </h3>
+          <div id="prov-banner" class="ready-banner no"><span>Running readiness checks…</span></div>
+          <div class="checklist" id="prov-checks"></div>
+          <div id="prov-join-wrap" class="hidden" style="margin-top:14px;">
+            <div class="filerow" style="align-items:center;">
+              <span class="muted" style="width:64px;">Hub URL</span>
+              <input id="prov-hub" placeholder="https://hub… (leave blank to host your own pool)" style="flex:1;" />
+              <span class="muted">Join code</span>
+              <input id="prov-code" placeholder="from the hub" style="width:160px;" />
+            </div>
+            <div class="filerow" style="align-items:center;margin-top:8px;">
+              <span class="muted" style="width:64px;">Price</span>
+              <input id="prov-price" type="number" step="0.01" min="0" placeholder="$/hr" style="width:110px;" />
+              <span class="muted">Region</span>
+              <input id="prov-region" placeholder="e.g. us-east" style="width:140px;" />
+              <span class="spacer"></span>
+              <button id="prov-join" class="iconbtn">Join the pool</button>
+              <button id="prov-leave" class="iconbtn danger hidden">Leave pool</button>
+            </div>
+          </div>
+          <div class="hint" style="margin-top:10px;">When every required check is green, set a price and join — this machine
+            becomes rentable. Follow each fix above (enable VT-x in BIOS, install/start Docker, reboot…). See the
+            <a href="https://github.com/elmoghany/cloudcompute#part-2--providers-put-your-compute-on-the-list" target="_blank" rel="noopener">provider guide</a> for full steps.</div>
+        </div>
       </section>
 
       <section class="card" id="sec-audit">
@@ -1040,10 +1065,12 @@
   }
 
   // --- server pool: marketplace (rent) + provider onboarding (join) ---
+  let _mktServers=[];
   async function loadMarketplace(){
     loadInvite();
     let d; try{ d=await api("/api/pool/servers"); }catch(e){ return; }
     const grid=$("mkt-grid"), servers=d.servers||[], mine=d.mine||[];
+    _mktServers=servers;
     // your active rentals (survives reload) with release buttons
     if(mine.length){
       $("mkt-rented").innerHTML="<b>Your rentals:</b> "+mine.map(s=>
@@ -1067,10 +1094,20 @@
     grid.querySelectorAll("[data-rent]").forEach(b=>b.onclick=()=>rentServer(b.getAttribute("data-rent")));
   }
   async function rentServer(pid){
-    if(!await uiConfirm("Rent this server? You'll get a private login; release it when done."))return;
+    const sv=_mktServers.find(x=>x.provider_id===pid)||{};
+    const price=Number(sv.price_per_hour||0);
+    const nm=sv.node_name||pid;
+    // Mock payment: acknowledge "payment" on the Pay click. No card is charged
+    // until real billing is wired — the rental is recorded as paid_mock.
+    const msg = price>0
+      ? ("Pay $"+price.toFixed(2)+"/hr to rent “"+nm+"”? Mock checkout — nothing is charged yet; "
+         +"you'll get a private login and can release it anytime.")
+      : ("Rent “"+nm+"” (free)? You'll get a private login; release it when done.");
+    if(!await uiConfirm(msg, price>0?{title:"Checkout",ok:"Pay & rent"}:{ok:"Rent"}))return;
     try{
-      const r=await api("/api/pool/rent",{method:"POST",body:{provider_id:pid}});
+      const r=await api("/api/pool/rent",{method:"POST",body:{provider_id:pid,paid:true}});
       const s=r.server||{}, acc=r.access||null;
+      if(price>0) toast("✓ Payment acknowledged (mock) — renting "+nm,"ok");
       // v0.29 auto-provision: show the scoped creds the hub minted for you.
       if(acc && acc.ok){ showRentCreds(s,acc); }
       else { toast("rented "+(s.node_name||pid)+(s.public_url?(" — sign in at "+s.public_url):""),"ok"); }
@@ -1096,6 +1133,55 @@
     const t=$("mkt-invite-cmd").textContent;
     if(navigator.clipboard){navigator.clipboard.writeText(t).then(()=>toast("copied","ok"),()=>toast("copy failed","error"));}
     else{ toast("copy not supported","error"); }
+  });
+
+  // --- add-a-machine: account-based install command (no join code) ---------
+  async function loadEnroll(){
+    const sh=$("join-cmd-sh"), ps=$("join-cmd-ps");
+    if(!sh&&!ps) return;
+    try{
+      const e=await api("/api/pool/enroll",{method:"POST"});   // mints YOUR token + command
+      if(sh) sh.textContent=e.command_sh||"";
+      if(ps) ps.textContent=e.command_ps||"";
+    }catch(err){
+      const base=(apiBase()||location.origin).replace(/\/+$/,"");
+      if(sh) sh.textContent="curl -fsSL "+base+"/join.sh | bash";
+      if(ps) ps.textContent="irm "+base+"/join.ps1 | iex";
+    }
+  }
+
+  // --- agent detection: prove the agent is really running (not just copied) --
+  let _detectTimer=null;
+  function setAgentStatus(ok,msg){
+    const el=$("agent-status"); if(!el) return;
+    el.className="ready-banner "+(ok?"ok":"no");
+    el.innerHTML="<span>"+(ok?"✓ ":"")+escapeHtml(msg)+"</span>";
+  }
+  async function probeLocalAgent(){
+    // An https page may fetch http://127.0.0.1 (loopback is treated as secure).
+    // Try a few common agent ports; the agent answers /api/agent/whoami w/ CORS.
+    for(const p of [41873,8000,8001,8080,8765]){
+      try{ const r=await fetch("http://127.0.0.1:"+p+"/api/agent/whoami",{cache:"no-store"});
+        if(r.ok){ const j=await r.json(); if(j&&j.agent) return j; } }catch(e){}
+    }
+    return null;
+  }
+  async function detectAgentOnce(){
+    const local=await probeLocalAgent();                       // same-machine proof
+    if(local){ setAgentStatus(true,"Agent detected on this machine ("+(local.node_name||"node")+"). You're all set — rent from the Marketplace."); return true; }
+    try{ const m=await api("/api/pool/mine");                  // account-linked fallback
+      if(m && m.agent_online){
+        const on=(m.owned||[]).find(o=>o.status==="online")||{};
+        setAgentStatus(true,"Your machine “"+(on.node_name||"")+"” is online in the pool."); return true; }
+      if((m.owned||[]).length){ setAgentStatus(false,"Your machine is registered but offline — start the agent on it."); return false; }
+    }catch(e){}
+    setAgentStatus(false,"No agent detected yet. Run the command above on the machine you want to add — this updates automatically.");
+    return false;
+  }
+  if($("provider-card")) $("provider-card").addEventListener("click",e=>{
+    const b=e.target.closest("[data-copy]"); if(!b) return;
+    const el=$(b.getAttribute("data-copy")); if(!el) return;
+    if(navigator.clipboard){navigator.clipboard.writeText(el.textContent).then(()=>toast("copied","ok"),()=>toast("copy failed","error"));}
   });
 
   // --- Apple code signing (rent-a-Mac for Xcode) -----------------------
@@ -1199,13 +1285,13 @@
   // --- sidebar navigation / views ---
   // Each nav item maps to the section ids that belong to it.
   const NAV=[
-    {id:"overview", label:"Overview", ic:"◧", grp:"Compute", secs:["sec-metrics","sec-noderow","sec-history"]},
+    {id:"overview", label:"Overview", ic:"◧", grp:"Compute", secs:["sec-metrics","sec-noderow","sec-history"], write:true},
     {id:"instance", label:"Instance", ic:"▣", grp:"Compute", secs:["instance-card","snapshots-card"], write:true},
     {id:"terminal", label:"Terminal", ic:"❯", grp:"Compute", secs:["shell-card","run-card"], write:true},
     {id:"signing", label:"Code signing", ic:"⌥", grp:"Compute", secs:["signing-card"], write:true},
-    {id:"files",    label:"Files",    ic:"▤", grp:"Compute", secs:["sec-filesrow"]},
+    {id:"files",    label:"Files",    ic:"▤", grp:"Compute", secs:["sec-filesrow"], write:true},
     {id:"marketplace",label:"Marketplace",ic:"⊞", grp:"Pool", secs:["marketplace-card"]},
-    {id:"provider", label:"Become provider", ic:"⊹", grp:"Pool", secs:["provider-card"], admin:true},
+    {id:"provider", label:"Add a machine", ic:"⊹", grp:"Pool", secs:["provider-card"]},
     {id:"jobs",     label:"Activity", ic:"≡", grp:"Account", secs:["sec-jobs","sec-audit"]},
     {id:"billing",  label:"Billing",  ic:"$", grp:"Account", secs:["billing-card"]},
     {id:"security", label:"Security", ic:"⚿", grp:"Account", secs:["sec-security"]},
@@ -1214,7 +1300,10 @@
   const ALL_SECS=NAV.flatMap(n=>n.secs);
   let curView="overview";
   let nodeIsMac=false;   // Code-signing is Xcode-only -> show that nav on macOS only
-  function visibleNav(){ return NAV.filter(n=>!(n.admin&&!isAdmin()) && !(n.id==="signing"&&!nodeIsMac)); }
+  // Viewers (self-signup renters/providers) only see Marketplace + Add-a-machine
+  // + Account. The whole Compute group is the HUB's own machine (osama-pc) and is
+  // gated to operator/admin via `write`, so a renter never sees it.
+  function visibleNav(){ return NAV.filter(n=>!(n.admin&&!isAdmin()) && !(n.write&&!canWrite()) && !(n.id==="signing"&&!nodeIsMac)); }
   function renderNav(){
     let html="", lastGrp=null;
     visibleNav().forEach(n=>{
@@ -1226,7 +1315,7 @@
     $("nav").querySelectorAll("[data-nav]").forEach(b=>b.onclick=()=>setView(b.getAttribute("data-nav")));
   }
   function setView(name){
-    if(!visibleNav().some(n=>n.id===name)) name="overview";
+    if(!visibleNav().some(n=>n.id===name)) name=(visibleNav()[0]||{id:"overview"}).id;
     curView=name;
     const view=NAV.find(n=>n.id===name);
     // hide every managed section, then show this view's sections (role .hidden still wins)
@@ -1238,6 +1327,26 @@
       b.classList.toggle("active",on); b.setAttribute("aria-current",on?"page":"false");
     });
     closeSidebar();
+    syncPolling();
+  }
+  // Live node-status polling runs ONLY while an operator/admin is actually viewing
+  // Overview — so the node doesn't burn compute logging its status for viewers or
+  // when nobody's looking ("log status only when requested").
+  function syncPolling(){
+    const wantLive = canWrite() && curView==="overview";
+    if(wantLive){
+      loadNode();
+      if(!pollTimer){ refresh(); pollTimer=setInterval(refresh,3000); }
+      if(!histTimer){ loadHistory(); histTimer=setInterval(loadHistory,60000); }
+      if(!liveTimer){ liveTimer=setInterval(tickLive,1000); }
+    } else {
+      if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
+      if(histTimer){clearInterval(histTimer);histTimer=null;}
+      if(liveTimer){clearInterval(liveTimer);liveTimer=null;}
+    }
+    // Agent detection polls ONLY while the user is on the "Add a machine" view.
+    if(curView==="provider"){ if(!_detectTimer){ detectAgentOnce(); _detectTimer=setInterval(detectAgentOnce,8000); } }
+    else if(_detectTimer){ clearInterval(_detectTimer); _detectTimer=null; }
   }
   function openSidebar(){const sb=$("sidebar");if(sb)sb.classList.add("open");const bd=$("sb-backdrop");if(bd)bd.classList.add("show");}
   function closeSidebar(){const sb=$("sidebar");if(sb)sb.classList.remove("open");const bd=$("sb-backdrop");if(bd)bd.classList.remove("show");}
@@ -1261,7 +1370,12 @@
     $("images-card").classList.toggle("hidden",!isAdmin());
     $("instance-card").classList.toggle("hidden",!canWrite());
     $("marketplace-card").classList.remove("hidden");      // any user can rent
-    $("provider-card").classList.toggle("hidden",!isAdmin());
+    $("provider-card").classList.remove("hidden");         // anyone can add a machine
+    // The "put THIS machine in the pool" block is the hub's own readiness — only
+    // its operator/admin sees it; renters just see "add your own machine".
+    const pt=$("prov-thishost"); if(pt) pt.style.display=canWrite()?"":"none";
+    // The topbar node-name pill names the hub (osama-pc) — hide it from renters.
+    const np=$("hdr-node2"); if(np) np.style.display=canWrite()?"":"none";
   }
   $("nu-add").addEventListener("click",addUser);
   async function loadUsers(){
@@ -1831,11 +1945,19 @@
       set2fa(!!me.twofa_enabled);
       applyRole();
       renderNav(); setView(curView);
-      await loadNode();await loadFiles();await loadUsers();await loadKeys();await loadTokens();await loadSnapshots();await loadWebhooks();await loadPower();await loadAlerts();await loadImages();await loadFlavors();await loadInstance();await loadBilling();await loadMarketplace();await loadProviderChecks();await loadSigning();await refresh();
-      await loadHistory();
-      if(pollTimer)clearInterval(pollTimer);pollTimer=setInterval(refresh,3000);
-      if(histTimer)clearInterval(histTimer);histTimer=setInterval(loadHistory,60000);
-      if(liveTimer)clearInterval(liveTimer);liveTimer=setInterval(tickLive,1000);}
+      // Everyone: marketplace, their billing, the add-a-machine command.
+      await loadMarketplace(); await loadBilling();
+      await loadEnroll();   // populate the install command (detection runs on that view)
+      // Operators/admins manage THIS host -> load its panels. Renters never see
+      // this host, so we don't fetch or poll its status (no wasted compute).
+      if(canWrite()){
+        await loadFiles();await loadUsers();await loadKeys();await loadTokens();
+        await loadSnapshots();await loadWebhooks();await loadPower();await loadAlerts();
+        await loadImages();await loadFlavors();await loadInstance();
+        await loadProviderChecks();await loadSigning();
+      }
+      syncPolling();   // live node polling only while an operator views Overview
+    }
     catch(e){logout();}
   }
   async function discover({silent=false}={}){
