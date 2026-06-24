@@ -636,6 +636,7 @@
       <section class="card hidden" id="marketplace-card">
         <h3>Marketplace <span class="muted">(rent a server from the pool)</span>
           <button id="mkt-refresh" class="iconbtn" title="Refresh" aria-label="Refresh marketplace" style="float:right;">↻</button>
+          <label class="muted" style="float:right;margin-right:12px;font-size:12px;cursor:pointer;"><input type="checkbox" id="mkt-xcode-only" style="vertical-align:-1px;"/> Xcode-capable only</label>
         </h3>
         <div id="mkt-invite" class="hidden" style="margin-bottom:14px;padding:13px 15px;border:1px solid var(--line-2);border-radius:10px;background:var(--bg-2);">
           <div style="font-weight:600;font-size:13.5px;margin-bottom:3px;">Grow your pool — add a PC in one command</div>
@@ -1107,8 +1108,13 @@
         "<button class='iconbtn' data-release='"+escapeHtml(s.provider_id)+"'>Release</button></span>").join("");
       $("mkt-rented").querySelectorAll("[data-release]").forEach(b=>b.onclick=()=>releaseServer(b.getAttribute("data-release")));
     } else { $("mkt-rented").innerHTML=""; }
-    $("mkt-empty").classList.toggle("hidden", servers.length>0);
-    grid.innerHTML=servers.map(s=>{
+    const xcodeOnly=$("mkt-xcode-only")&&$("mkt-xcode-only").checked;
+    const shown=xcodeOnly?servers.filter(s=>s.specs&&s.specs.xcode&&s.specs.xcode.capable):servers;
+    $("mkt-empty").classList.toggle("hidden", shown.length>0);
+    if($("mkt-empty")) $("mkt-empty").textContent = xcodeOnly&&!shown.length
+      ? "No Xcode-capable machines available right now." :
+      "No servers available right now — check back, or become a provider to add yours.";
+    grid.innerHTML=shown.map(s=>{
       const sp=s.specs||{};
       const gpu=(sp.gpus&&sp.gpus.length)?(" · "+sp.gpus.length+"× "+escapeHtml(sp.gpus[0].name||"GPU")):"";
       const xcode=(sp.xcode&&sp.xcode.capable)?" <span class='tag completed' style='font-size:10px;vertical-align:1px;' title='"+escapeHtml("Xcode "+(sp.xcode.version||"")).trim()+"'>Xcode</span>":"";
@@ -1149,6 +1155,7 @@
     catch(e){ toast(e.message,"error"); }
   }
   if($("mkt-refresh")) $("mkt-refresh").addEventListener("click",loadMarketplace);
+  if($("mkt-xcode-only")) $("mkt-xcode-only").addEventListener("change",loadMarketplace);
   async function loadInvite(){
     if(!isAdmin()){ $("mkt-invite").classList.add("hidden"); return; }
     let inv; try{ inv=await api("/api/pool/invite"); }catch(e){ return; }
