@@ -673,16 +673,21 @@
             <span id="node-admin-label" class="muted" style="font-size:12px;">user = your email — the installer will ask you to choose a password when you run the command.</span>
           </div>
           <div class="filerow" style="align-items:center;">
-            <span class="muted" style="width:92px;">macOS / Linux</span>
+            <span class="muted" style="width:148px;">macOS / Linux</span>
             <code id="join-cmd-sh" style="flex:1;white-space:pre-wrap;word-break:break-all;padding:9px 11px;font-size:12px;line-height:1.5;"></code>
             <button class="iconbtn" data-copy="join-cmd-sh" style="white-space:nowrap;">Copy</button>
           </div>
           <div class="filerow" style="align-items:center;margin-top:6px;">
-            <span class="muted" style="width:92px;">Windows</span>
+            <span class="muted" style="width:148px;">Windows (PowerShell)</span>
             <code id="join-cmd-ps" style="flex:1;white-space:pre-wrap;word-break:break-all;padding:9px 11px;font-size:12px;line-height:1.5;"></code>
             <button class="iconbtn" data-copy="join-cmd-ps" style="white-space:nowrap;">Copy</button>
           </div>
-          <div class="hint" style="margin-top:7px;">A Mac joins with the <b>local</b> sandbox so it can run <code>xcodebuild</code> natively. Once it appears in the Marketplace, rent it like any other machine.</div>
+          <div class="filerow" style="align-items:center;margin-top:6px;">
+            <span class="muted" style="width:148px;">Windows (bash)</span>
+            <code id="join-cmd-sh2" style="flex:1;white-space:pre-wrap;word-break:break-all;padding:9px 11px;font-size:12px;line-height:1.5;"></code>
+            <button class="iconbtn" data-copy="join-cmd-sh2" style="white-space:nowrap;">Copy</button>
+          </div>
+          <div class="hint" style="margin-top:7px;">Windows (PowerShell) is the simplest on Windows; <b>Windows (bash)</b> is the same script for Git Bash / WSL. A Mac joins with the <b>local</b> sandbox so it can run <code>xcodebuild</code> natively. Once it appears in the Marketplace, rent it like any other machine.</div>
           <div id="agent-status" class="ready-banner no" style="margin-top:11px;"><span>Run the command above — this page will detect your agent automatically.</span></div>
         </div>
 
@@ -1197,6 +1202,7 @@
       cmdPs="irm "+base+"/join.ps1 | iex";
     }
     if(sh) sh.textContent=cmdSh;
+    const sh2=$("join-cmd-sh2"); if(sh2) sh2.textContent=cmdSh;   // Windows (bash) = same script
     if(ps) ps.textContent=cmdPs;
     if(who&&$("node-admin-label")) $("node-admin-label").innerHTML=
       "user = <b>"+escapeHtml(who)+"</b> — the installer will ask you to choose a password when you run the command.";
