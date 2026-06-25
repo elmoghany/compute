@@ -670,8 +670,7 @@
           <div class="hint" style="margin-bottom:9px;">Add <b>your own</b> machine — a Windows PC, a Linux box, or a Mac (for Xcode/native builds) — to the marketplace. Run the one command below <b>on that machine</b>; it downloads the node, joins this hub, and your machine shows up in the <b>Marketplace</b> for rent.</div>
           <div class="filerow" style="align-items:center;margin-bottom:9px;">
             <span class="muted" style="width:92px;">Login</span>
-            <span id="node-admin-label" class="muted" style="font-size:12px;">user = your email</span>
-            <input id="node-pass" type="password" placeholder="set a password (optional; random if blank)" autocomplete="new-password" style="flex:1;min-width:180px;" />
+            <span id="node-admin-label" class="muted" style="font-size:12px;">user = your email — the installer will ask you to choose a password when you run the command.</span>
           </div>
           <div class="filerow" style="align-items:center;">
             <span class="muted" style="width:92px;">macOS / Linux</span>
@@ -1185,32 +1184,23 @@
   });
 
   // --- add-a-machine: account-based install command (no join code) ---------
-  let _enrollSh="", _enrollPs="";
   async function loadEnroll(){
     const sh=$("join-cmd-sh"), ps=$("join-cmd-ps");
     if(!sh&&!ps) return;
+    let cmdSh, cmdPs, who="";
     try{
       const e=await api("/api/pool/enroll",{method:"POST"});   // mints YOUR token + command (user=your email)
-      _enrollSh=e.command_sh||""; _enrollPs=e.command_ps||"";
-      if($("node-admin-label")&&e.node_admin) $("node-admin-label").textContent="user = "+e.node_admin;
+      cmdSh=e.command_sh||""; cmdPs=e.command_ps||""; who=e.node_admin||"";
     }catch(err){
       const base=(apiBase()||location.origin).replace(/\/+$/,"");
-      _enrollSh="curl -fsSL "+base+"/join.sh | bash";
-      _enrollPs="irm "+base+"/join.ps1 | iex";
+      cmdSh="curl -fsSL "+base+"/join.sh | bash";
+      cmdPs="irm "+base+"/join.ps1 | iex";
     }
-    renderJoinCmd();
+    if(sh) sh.textContent=cmdSh;
+    if(ps) ps.textContent=cmdPs;
+    if(who&&$("node-admin-label")) $("node-admin-label").innerHTML=
+      "user = <b>"+escapeHtml(who)+"</b> — the installer will ask you to choose a password when you run the command.";
   }
-  // The password (if the user sets one) is injected CLIENT-SIDE only — never sent
-  // to the hub. Shell-escaped for the "…" context in each command.
-  function renderJoinCmd(){
-    const pw=($("node-pass")&&$("node-pass").value)||"";
-    const shEsc=s=>s.replace(/([\\"$`])/g,"\\$1");
-    const psEsc=s=>s.replace(/([`"$])/g,"`$1");
-    const sh=$("join-cmd-sh"), ps=$("join-cmd-ps");
-    if(sh) sh.textContent=(pw?('CC_NODE_PASSWORD="'+shEsc(pw)+'" '):"")+_enrollSh;
-    if(ps) ps.textContent=(pw?('$env:CC_NODE_PASSWORD="'+psEsc(pw)+'"; '):"")+_enrollPs;
-  }
-  if($("node-pass")) $("node-pass").addEventListener("input",renderJoinCmd);
 
   // --- agent detection: prove the agent is really running (not just copied) --
   let _detectTimer=null;
