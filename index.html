@@ -1310,9 +1310,11 @@
         const onThisMac=!!lx;                 // dashboard is open ON the Mac itself
         const cap=lx?!!lx.capable:!!(sp.xcode&&sp.xcode.capable);
         const ver=(lx&&lx.version)||(sp.xcode&&sp.xcode.version)||"";
-        const cmds=(lx&&lx.next_commands&&lx.next_commands.length)?lx.next_commands:[
+        const baseCmds=(lx&&lx.next_commands&&lx.next_commands.length)?lx.next_commands.slice():[
           "sudo xcode-select -s /Applications/Xcode.app/Contents/Developer",
           "sudo xcodebuild -license accept","sudo xcodebuild -runFirstLaunch"];
+        // …plus the verify step so a paste-the-block run confirms it worked.
+        const cmds=baseCmds.concat(["xcodebuild -version"]);
         if(cap){
           if(!_xcodeWasCapable){ _xcodeWasCapable=true; toast("✓ Xcode is ready — your Mac can now take Xcode Cloud builds","ok"); }
           if($("att-xcode-status")) $("att-xcode-status").innerHTML =
