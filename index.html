@@ -1258,15 +1258,15 @@
   async function detectAgentOnce(){
     let owned=[];
     try{ const m=await api("/api/pool/mine"); owned=m.owned||[]; }catch(e){}
-    if(owned.length && !_showCmd){ showMachine(owned[0]); return true; }   // you already have a machine -> show it
-    const local=await probeLocalAgent();                           // same-machine proof
+    const local=await probeLocalAgent();                           // same-machine proof + live xcode status
+    if(owned.length && !_showCmd){ showMachine(owned[0], local); return true; }   // you already have a machine -> show it
     if(local){ setAgentStatus(true,"Agent detected on this machine — registering with the hub…"); return false; }
     setAgentStatus(false,"No agent detected yet. Run the command above on the machine you want to add — this updates automatically.");
     return false;
   }
   // Show YOUR machine: live status + price/region (attach/update) + the Mac Xcode step.
-  let _machineShown=false;
-  function showMachine(m){
+  let _machineShown=false, _xcodeWasCapable=false;
+  function showMachine(m, local){
     const add=$("prov-addmachine"), att=$("prov-attach"); if(!att) return;
     if(add) add.classList.add("hidden");
     att.classList.remove("hidden");
@@ -1288,12 +1288,27 @@
     if(xc){
       if(isMac){
         xc.classList.remove("hidden");
-        const cap=sp.xcode&&sp.xcode.capable;
-        if($("att-xcode-status")) $("att-xcode-status").innerHTML = cap
-          ? "✓ Xcode-ready"+(sp.xcode.version?(" ("+escapeHtml(sp.xcode.version)+")"):"")+" — this Mac can take Xcode Cloud builds."
-          : "Not set up yet. Run this <b>on the Mac</b> to install the Xcode tools + accept the license:";
-        if($("att-xcode-cmd")) $("att-xcode-cmd").textContent="cd ~/cloudcompute/backend && sudo ./.venv/bin/python -m cloudcompute xcode --setup";
-        if($("att-xcode-row")) $("att-xcode-row").style.display = cap ? "none" : "";
+        // Prefer LIVE status from this Mac's own agent (flips instantly when setup
+        // finishes); fall back to the hub specs (refreshed each 60s heartbeat).
+        const lx=local&&local.xcode;
+        const cap=lx?!!lx.capable:!!(sp.xcode&&sp.xcode.capable);
+        const ver=(lx&&lx.version)||(sp.xcode&&sp.xcode.version)||"";
+        const steps=(lx&&lx.next_steps&&lx.next_steps.length)?lx.next_steps:null;
+        if(cap){
+          if(!_xcodeWasCapable){ _xcodeWasCapable=true; toast("✓ Xcode is ready — your Mac can now take Xcode Cloud builds","ok"); }
+          if($("att-xcode-status")) $("att-xcode-status").innerHTML =
+            "✓ <b>Xcode ready</b>"+(ver?(" ("+escapeHtml(ver)+")"):"")+" — this Mac can take Xcode Cloud builds."+
+            "<br><span class='hint'><b>Next step:</b> set your hourly price below and click <b>Save</b>. Your Mac then appears in the marketplace under the <b>macOS / Xcode</b> filter for renters who need iOS &amp; macOS builds.</span>";
+          if($("att-xcode-row")) $("att-xcode-row").style.display="none";
+        } else {
+          _xcodeWasCapable=false;
+          if($("att-xcode-status")) $("att-xcode-status").innerHTML =
+            "Optional — to also offer <b>Xcode Cloud</b> builds, run this <b>on the Mac</b> (installs the tools, accepts the license, finishes Xcode's first launch):"+
+            (steps?("<br><span class='hint'>Remaining: "+steps.map(escapeHtml).join("; ")+"</span>"):"")+
+            "<br><span class='hint'>When it finishes, this page detects it automatically — no refresh needed.</span>";
+          if($("att-xcode-cmd")) $("att-xcode-cmd").textContent="cd ~/cloudcompute/backend && sudo ./.venv/bin/python -m cloudcompute xcode --setup";
+          if($("att-xcode-row")) $("att-xcode-row").style.display="";
+        }
       } else xc.classList.add("hidden");
     }
   }
