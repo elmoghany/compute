@@ -30,6 +30,7 @@
     .brand .logo{width:20px;height:20px;border-radius:6px;background:linear-gradient(135deg,var(--accent),#7b3ff0);
       box-shadow:0 0 0 1px var(--line-2),0 2px 10px rgba(201,86,255,.35);}
     .brand span{color:var(--accent);}
+    .appver{font-size:11px;color:var(--faint);letter-spacing:.4px;margin:3px 0 0 28px;font-variant-numeric:tabular-nums;}
 
     /* inputs + buttons */
     input,select,textarea{background:var(--bg-2);border:1px solid var(--line);color:var(--text);
@@ -240,6 +241,7 @@
   <div id="login-view" class="login-wrap hidden">
     <div class="login-card">
       <div class="brand"><i class="logo"></i> cloud<span>compute</span></div>
+      <div class="appver" id="ver-login"></div>
       <p class="tagline">Rent CPU, GPU &amp; Mac compute by the hour.</p>
 
       <!-- self-serve sign-in (shown when this page is served by a node) -->
@@ -288,6 +290,7 @@
     <aside class="sidebar" id="sidebar">
       <div class="side-head">
         <div class="brand"><i class="logo"></i> cloud<span>compute</span></div>
+        <div class="appver" id="ver-side"></div>
         <div class="node-pill"><span class="dot" id="conn-dot" title="connection"></span> <span id="hdr-node">—</span></div>
       </div>
       <nav class="nav" id="nav"></nav>
@@ -883,11 +886,13 @@
     $("api-base").value=localStorage.getItem(BASE_KEY)||""; initLoginAuth();}
   function showDash(){$("login-view").classList.add("hidden");$("dash-view").classList.remove("hidden");}
   // --- self-serve sign-in (Google + email/password) --------------------
+  function setVer(v){ if(!v) return; document.querySelectorAll(".appver").forEach(e=>{ e.textContent="v"+v; }); }
   async function initLoginAuth(){
     let base=apiBase();
     if(!base && location.protocol.indexOf("http")===0) base=location.origin;
     if(!base) return;                                  // standalone page -> node-login form only
     let info; try{ info=await (await fetch(base+"/api/info",{cache:"no-store"})).json(); }catch(e){ return; }
+    setVer(info.version);
     if(!apiBase()) localStorage.setItem(BASE_KEY,base);
     const gb=$("google-btn"), ea=$("email-auth"), areg=$("auth-register"), aor=$("auth-or");
     if(info.google_signin){ gb.href=base+"/auth/google/login"; gb.classList.remove("hidden"); aor.classList.remove("hidden"); }
@@ -2113,6 +2118,7 @@
       set2fa(!!me.twofa_enabled);
       applyRole();
       renderNav(); setView(curView);
+      api("/api/info").then(i=>setVer(i.version)).catch(()=>{});   // version under the logo
       // Everyone: marketplace, their billing, the add-a-machine command.
       await loadMarketplace(); await loadBilling();
       await loadEnroll();   // populate the install command (detection runs on that view)
