@@ -694,9 +694,9 @@
           <div id="agent-status" class="ready-banner no" style="margin-top:11px;"><span>Run the command above — this page will detect your agent automatically.</span></div>
         </div>
 
-        <!-- Shown automatically once the agent is detected: attach the machine. -->
+        <!-- Shown automatically when you already have a machine: its status + attach/Xcode. -->
         <div id="prov-attach" class="hidden">
-          <div class="ready-banner ok" style="margin-bottom:11px;"><span>✓ Agent detected — <b id="att-name">your machine</b> is online. Attach it to the marketplace:</span></div>
+          <div id="att-banner" class="ready-banner ok" style="margin-bottom:11px;"><span>—</span></div>
           <div id="att-specs" class="hint" style="margin-bottom:10px;"></div>
           <div class="filerow" style="align-items:center;flex-wrap:wrap;">
             <span class="muted" style="width:64px;">Price</span>
@@ -706,7 +706,17 @@
             <span style="flex:1;"></span>
             <button id="att-btn" class="iconbtn">Attach to marketplace</button>
           </div>
-          <div class="hint" style="margin-top:7px;">Set a price and attach — your machine becomes rentable. You can change it anytime, or <a href="#" id="att-back">show the install command again</a>.</div>
+          <!-- Next step for a Mac: set up Xcode so it can offer Xcode Cloud builds. -->
+          <div id="att-xcode" class="hidden" style="margin-top:14px;border-top:1px dashed var(--line);padding-top:12px;">
+            <h3 style="font-size:13.5px;">Next: set up Xcode <span class="muted">(to offer Xcode Cloud builds)</span></h3>
+            <div id="att-xcode-status" class="hint" style="margin-bottom:7px;"></div>
+            <div id="att-xcode-row" class="filerow" style="align-items:center;">
+              <code id="att-xcode-cmd" style="flex:1;white-space:pre-wrap;word-break:break-all;padding:8px 10px;font-size:12px;line-height:1.5;"></code>
+              <button class="iconbtn" data-copy="att-xcode-cmd" style="white-space:nowrap;">Copy</button>
+            </div>
+            <div class="hint" style="margin-top:6px;">Run that <b>on the Mac</b> (or open the Mac's own dashboard → “Offer Xcode Cloud builds”). When <code>xcodebuild</code> works it earns an “Xcode” badge and renters can pick it for builds.</div>
+          </div>
+          <div class="hint" style="margin-top:9px;">Change the price anytime, or <a href="#" id="att-back">show the install command</a> (to add another machine).</div>
         </div>
 
         <!-- Put THIS machine (the one serving this dashboard) in the pool. Only the
@@ -1244,30 +1254,48 @@
     }
     return null;
   }
+  let _showCmd=false;   // set when the user explicitly asks for the install command
   async function detectAgentOnce(){
-    let owned=[], online=false;
-    try{ const m=await api("/api/pool/mine"); owned=m.owned||[]; online=!!m.agent_online; }catch(e){}
-    const machine=owned.find(o=>o.status==="online") || (online?owned[0]:null);
-    if(machine){ showAttach(machine); return true; }            // detected -> advance to attach
-    const local=await probeLocalAgent();                         // same-machine proof
+    let owned=[];
+    try{ const m=await api("/api/pool/mine"); owned=m.owned||[]; }catch(e){}
+    if(owned.length && !_showCmd){ showMachine(owned[0]); return true; }   // you already have a machine -> show it
+    const local=await probeLocalAgent();                           // same-machine proof
     if(local){ setAgentStatus(true,"Agent detected on this machine — registering with the hub…"); return false; }
-    if(owned.length){ setAgentStatus(false,"Your machine is registered but offline — start the agent on it."); return false; }
     setAgentStatus(false,"No agent detected yet. Run the command above on the machine you want to add — this updates automatically.");
     return false;
   }
-  // Once detected, swap the install-command view for the attach step.
-  function showAttach(m){
+  // Show YOUR machine: live status + price/region (attach/update) + the Mac Xcode step.
+  let _machineShown=false;
+  function showMachine(m){
     const add=$("prov-addmachine"), att=$("prov-attach"); if(!att) return;
     if(add) add.classList.add("hidden");
     att.classList.remove("hidden");
     att.dataset.pid=m.provider_id||"";
-    if($("att-name")) $("att-name").textContent=m.node_name||m.provider_id;
-    const sp=m.specs||{};
+    const sp=m.specs||{}, online=m.status==="online", ready=!!m.ready, live=online&&ready, ch=m.checks||{};
+    const b=$("att-banner");
+    if(b){ b.className="ready-banner "+(live?"ok":"no");
+      b.innerHTML="<span>"+(live?"✓ ":"")+"<b>"+escapeHtml(m.node_name||"your machine")+"</b> is added"+
+        (live? " and live in the marketplace."
+             : online? (" — registered, but not rentable yet ("+(ch.required_passed||0)+"/"+(ch.total_required||0)+" checks pass).")
+                     : " — currently offline; start the agent on it.")+"</span>"; }
     if($("att-specs")) $("att-specs").textContent=(sp.cpus||"?")+" vCPU · "+(sp.memory_gb||"?")+" GB RAM"+
-      ((sp.gpus&&sp.gpus.length)?(" · "+sp.gpus.length+"× GPU"):"")+(sp.os?(" · "+escapeHtml(sp.os)):"")+
-      ((sp.xcode&&sp.xcode.capable)?" · Xcode":"");
-    if($("att-price")&&$("att-price").value==="") $("att-price").value=(m.price_per_hour||0);
-    if($("att-region")&&$("att-region").value==="") $("att-region").value=(m.region||"");
+      ((sp.gpus&&sp.gpus.length)?(" · "+sp.gpus.length+"× GPU"):"")+(sp.os?(" · "+sp.os):"");
+    if(!_machineShown){ if($("att-price")) $("att-price").value=(m.price_per_hour!=null?m.price_per_hour:0);
+                        if($("att-region")) $("att-region").value=(m.region||""); }
+    _machineShown=true;
+    if($("att-btn")) $("att-btn").textContent="Update price / region";
+    const isMac=/mac|darwin/i.test(sp.os||""), xc=$("att-xcode");
+    if(xc){
+      if(isMac){
+        xc.classList.remove("hidden");
+        const cap=sp.xcode&&sp.xcode.capable;
+        if($("att-xcode-status")) $("att-xcode-status").innerHTML = cap
+          ? "✓ Xcode-ready"+(sp.xcode.version?(" ("+escapeHtml(sp.xcode.version)+")"):"")+" — this Mac can take Xcode Cloud builds."
+          : "Not set up yet. Run this <b>on the Mac</b> to install the Xcode tools + accept the license:";
+        if($("att-xcode-cmd")) $("att-xcode-cmd").textContent="~/cloudcompute/backend/.venv/bin/python -m cloudcompute xcode --setup";
+        if($("att-xcode-row")) $("att-xcode-row").style.display = cap ? "none" : "";
+      } else xc.classList.add("hidden");
+    }
   }
   async function attachMachine(){
     const att=$("prov-attach"), pid=att&&att.dataset.pid; if(!pid) return;
@@ -1275,14 +1303,15 @@
     const btn=$("att-btn"); if(btn) btn.disabled=true;
     try{
       await api("/api/pool/configure",{method:"POST",body:{provider_id:pid,price_per_hour:price,region:region||null}});
-      toast("✓ attached — your machine is live in the marketplace","ok");
-      if(btn) btn.textContent="Attached ✓";
+      toast("✓ saved — your machine is attached to the marketplace","ok");
       loadMarketplace();
+      _machineShown=false; detectAgentOnce();    // refresh the panel from the server
     }catch(e){ toast(e.message,"error"); }
     finally{ if(btn) btn.disabled=false; }
   }
   if($("att-btn")) $("att-btn").addEventListener("click",attachMachine);
   if($("att-back")) $("att-back").addEventListener("click",function(e){ e.preventDefault();
+    _showCmd=true;
     if($("prov-attach")) $("prov-attach").classList.add("hidden");
     if($("prov-addmachine")) $("prov-addmachine").classList.remove("hidden"); });
   if($("provider-card")) $("provider-card").addEventListener("click",e=>{
@@ -1503,7 +1532,7 @@
       if(liveTimer){clearInterval(liveTimer);liveTimer=null;}
     }
     // Agent detection polls ONLY while the user is on the "Add a machine" view.
-    if(curView==="provider"){ if(!_detectTimer){ detectAgentOnce(); _detectTimer=setInterval(detectAgentOnce,8000); } }
+    if(curView==="provider"){ if(!_detectTimer){ _showCmd=false; detectAgentOnce(); _detectTimer=setInterval(detectAgentOnce,8000); } }
     else if(_detectTimer){ clearInterval(_detectTimer); _detectTimer=null; }
   }
   function openSidebar(){const sb=$("sidebar");if(sb)sb.classList.add("open");const bd=$("sb-backdrop");if(bd)bd.classList.add("show");}
