@@ -709,12 +709,28 @@
           <!-- Next step for a Mac: set up Xcode so it can offer Xcode Cloud builds. -->
           <div id="att-xcode" class="hidden" style="margin-top:14px;border-top:1px dashed var(--line);padding-top:12px;">
             <h3 style="font-size:13.5px;">Next: set up Xcode <span class="muted">(to offer Xcode Cloud builds)</span></h3>
-            <div id="att-xcode-status" class="hint" style="margin-bottom:7px;"></div>
-            <div id="att-xcode-row" class="filerow" style="align-items:center;">
-              <code id="att-xcode-cmd" style="flex:1;white-space:pre-wrap;word-break:break-all;padding:8px 10px;font-size:12px;line-height:1.5;"></code>
-              <button class="iconbtn" data-copy="att-xcode-cmd" style="white-space:nowrap;">Copy</button>
+            <div id="att-xcode-status" class="hint" style="margin-bottom:9px;"></div>
+            <!-- Primary: one click → native macOS admin prompt → done. No terminal. -->
+            <div id="att-xcode-actions" class="filerow" style="align-items:center;gap:10px;">
+              <button id="att-xcode-auto" class="iconbtn" style="white-space:nowrap;">⚡ Set up Xcode automatically</button>
+              <span class="hint" style="flex:1;">Runs it for you — one macOS password prompt, no terminal needed.</span>
             </div>
-            <div class="hint" style="margin-top:6px;">Run that <b>on the Mac</b> (or open the Mac's own dashboard → “Offer Xcode Cloud builds”). When <code>xcodebuild</code> works it earns an “Xcode” badge and renters can pick it for builds.</div>
+            <!-- Fallback for anyone who prefers the terminal. -->
+            <details id="att-xcode-manual" style="margin-top:9px;">
+              <summary class="hint" style="cursor:pointer;">Prefer the terminal? Show the commands</summary>
+              <div class="hint" style="margin:7px 0 4px;">One command that does everything (asks for your Mac password once):</div>
+              <div class="filerow" style="align-items:center;">
+                <code id="att-xcode-cmd" style="flex:1;white-space:pre-wrap;word-break:break-all;padding:8px 10px;font-size:12px;line-height:1.5;"></code>
+                <button class="iconbtn" data-copy="att-xcode-cmd" style="white-space:nowrap;">Copy</button>
+              </div>
+              <div id="att-xcode-steps-wrap" class="hidden">
+                <div class="hint" style="margin:8px 0 4px;">…or run each step yourself <b>on the Mac</b>:</div>
+                <div class="filerow" style="align-items:flex-start;">
+                  <code id="att-xcode-steps" style="flex:1;white-space:pre-wrap;word-break:break-all;padding:8px 10px;font-size:12px;line-height:1.6;"></code>
+                  <button class="iconbtn" data-copy="att-xcode-steps" style="white-space:nowrap;">Copy</button>
+                </div>
+              </div>
+            </details>
           </div>
           <div class="hint" style="margin-top:9px;">Change the price anytime, or <a href="#" id="att-back">show the install command</a> (to add another machine).</div>
         </div>
@@ -1291,23 +1307,31 @@
         // Prefer LIVE status from this Mac's own agent (flips instantly when setup
         // finishes); fall back to the hub specs (refreshed each 60s heartbeat).
         const lx=local&&local.xcode;
+        const onThisMac=!!lx;                 // dashboard is open ON the Mac itself
         const cap=lx?!!lx.capable:!!(sp.xcode&&sp.xcode.capable);
         const ver=(lx&&lx.version)||(sp.xcode&&sp.xcode.version)||"";
-        const steps=(lx&&lx.next_steps&&lx.next_steps.length)?lx.next_steps:null;
+        const cmds=(lx&&lx.next_commands&&lx.next_commands.length)?lx.next_commands:[
+          "sudo xcode-select -s /Applications/Xcode.app/Contents/Developer",
+          "sudo xcodebuild -license accept","sudo xcodebuild -runFirstLaunch"];
         if(cap){
           if(!_xcodeWasCapable){ _xcodeWasCapable=true; toast("✓ Xcode is ready — your Mac can now take Xcode Cloud builds","ok"); }
           if($("att-xcode-status")) $("att-xcode-status").innerHTML =
             "✓ <b>Xcode ready</b>"+(ver?(" ("+escapeHtml(ver)+")"):"")+" — this Mac can take Xcode Cloud builds."+
             "<br><span class='hint'><b>Next step:</b> set your hourly price below and click <b>Save</b>. Your Mac then appears in the marketplace under the <b>macOS / Xcode</b> filter for renters who need iOS &amp; macOS builds.</span>";
-          if($("att-xcode-row")) $("att-xcode-row").style.display="none";
+          if($("att-xcode-actions")) $("att-xcode-actions").style.display="none";
+          if($("att-xcode-manual")) $("att-xcode-manual").style.display="none";
         } else {
           _xcodeWasCapable=false;
           if($("att-xcode-status")) $("att-xcode-status").innerHTML =
-            "Optional — to also offer <b>Xcode Cloud</b> builds, run this <b>on the Mac</b> (installs the tools, accepts the license, finishes Xcode's first launch):"+
-            (steps?("<br><span class='hint'>Remaining: "+steps.map(escapeHtml).join("; ")+"</span>"):"")+
-            "<br><span class='hint'>When it finishes, this page detects it automatically — no refresh needed.</span>";
+            "Optional — to also offer <b>Xcode Cloud</b> builds, finish Xcode setup on this Mac (switches the toolchain, accepts the license, runs first launch)."+
+            "<br><span class='hint'>When it's done, this page detects it automatically — no refresh needed.</span>";
+          // The one-click button only works when the dashboard is open on the Mac
+          // (it talks to the local agent). Elsewhere, show the terminal commands.
+          if($("att-xcode-actions")) $("att-xcode-actions").style.display=onThisMac?"":"none";
+          if($("att-xcode-manual")){ $("att-xcode-manual").style.display=""; if(!onThisMac) $("att-xcode-manual").open=true; }
           if($("att-xcode-cmd")) $("att-xcode-cmd").textContent="cd ~/cloudcompute/backend && sudo ./.venv/bin/python -m cloudcompute xcode --setup";
-          if($("att-xcode-row")) $("att-xcode-row").style.display="";
+          if($("att-xcode-steps")) $("att-xcode-steps").textContent=cmds.join("\n");
+          if($("att-xcode-steps-wrap")) $("att-xcode-steps-wrap").classList.toggle("hidden", !(cmds&&cmds.length));
         }
       } else xc.classList.add("hidden");
     }
@@ -1325,6 +1349,25 @@
     finally{ if(btn) btn.disabled=false; }
   }
   if($("att-btn")) $("att-btn").addEventListener("click",attachMachine);
+  // One-click Xcode setup: ask THIS Mac's agent to run the privileged steps via a
+  // native macOS admin prompt (no terminal). Only works when browsing on the Mac.
+  async function autoSetupXcode(){
+    const btn=$("att-xcode-auto");
+    if(btn){ btn.disabled=true; btn.textContent="⏳ Setting up Xcode — approve the macOS prompt…"; }
+    let res=null;
+    for(const p of [41873,8000,8001,8080,8765]){
+      try{ const r=await fetch("http://127.0.0.1:"+p+"/api/agent/xcode-setup",{method:"POST",cache:"no-store"});
+        if(r.ok){ res=await r.json(); break; } }catch(e){}
+    }
+    if(btn){ btn.disabled=false; btn.textContent="⚡ Set up Xcode automatically"; }
+    if(!res){ toast("Couldn't reach the agent on this Mac — open this page on the Mac, or use the terminal command","error");
+              if($("att-xcode-manual")) $("att-xcode-manual").open=true; return; }
+    if(res.capable){ toast(res.detail||"✓ Xcode is ready","ok"); }
+    else { toast(res.detail||"Setup ran — a step may still be pending (check the prompt)","info");
+           if($("att-xcode-manual")) $("att-xcode-manual").open=true; }
+    _machineShown=false; detectAgentOnce();   // re-render from fresh live status
+  }
+  if($("att-xcode-auto")) $("att-xcode-auto").addEventListener("click",autoSetupXcode);
   if($("att-back")) $("att-back").addEventListener("click",function(e){ e.preventDefault();
     _showCmd=true;
     if($("prov-attach")) $("prov-attach").classList.add("hidden");
