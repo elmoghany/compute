@@ -1292,7 +1292,7 @@
         if($("att-xcode-status")) $("att-xcode-status").innerHTML = cap
           ? "✓ Xcode-ready"+(sp.xcode.version?(" ("+escapeHtml(sp.xcode.version)+")"):"")+" — this Mac can take Xcode Cloud builds."
           : "Not set up yet. Run this <b>on the Mac</b> to install the Xcode tools + accept the license:";
-        if($("att-xcode-cmd")) $("att-xcode-cmd").textContent="~/cloudcompute/backend/.venv/bin/python -m cloudcompute xcode --setup";
+        if($("att-xcode-cmd")) $("att-xcode-cmd").textContent="cd ~/cloudcompute/backend && ./.venv/bin/python -m cloudcompute xcode --setup";
         if($("att-xcode-row")) $("att-xcode-row").style.display = cap ? "none" : "";
       } else xc.classList.add("hidden");
     }
