@@ -698,13 +698,39 @@
         <div id="prov-attach" class="hidden">
           <div id="att-banner" class="ready-banner ok" style="margin-bottom:11px;"><span>—</span></div>
           <div id="att-specs" class="hint" style="margin-bottom:10px;"></div>
-          <div class="filerow" style="align-items:center;flex-wrap:wrap;">
-            <span class="muted" style="width:64px;">Price</span>
-            <input id="att-price" type="number" step="0.01" min="0" placeholder="$/hr (0 = free)" style="width:130px;" />
+          <!-- Owner sets CAPS (how much of the machine to lend); the price is
+               derived from platform rates, so no dollar figure to invent. -->
+          <div style="margin-bottom:4px;font-size:12.5px;font-weight:600;">How much of this machine to rent out</div>
+          <div class="filerow" style="align-items:center;gap:10px;">
+            <span class="muted" style="width:74px;">vCPU</span>
+            <input id="att-vcpu" type="range" min="1" step="1" style="flex:1;" />
+            <b id="att-vcpu-val" style="width:64px;text-align:right;font-variant-numeric:tabular-nums;">–</b>
+          </div>
+          <div class="filerow" style="align-items:center;gap:10px;margin-top:5px;">
+            <span class="muted" style="width:74px;">RAM</span>
+            <input id="att-ram" type="range" min="1" step="1" style="flex:1;" />
+            <b id="att-ram-val" style="width:64px;text-align:right;font-variant-numeric:tabular-nums;">–</b>
+          </div>
+          <div class="filerow" style="align-items:center;gap:10px;margin-top:5px;">
+            <span class="muted" style="width:74px;">Storage</span>
+            <input id="att-storage" type="range" min="0" step="1" style="flex:1;" />
+            <b id="att-storage-val" style="width:64px;text-align:right;font-variant-numeric:tabular-nums;">–</b>
+          </div>
+          <div class="filerow" style="align-items:center;flex-wrap:wrap;gap:10px;margin-top:9px;">
+            <span class="muted" style="width:74px;">Pricing</span>
+            <select id="att-mode" style="width:170px;">
+              <option value="1">Auto (recommended)</option>
+              <option value="0.8">Budget −20%</option>
+              <option value="1.2">Premium +20%</option>
+              <option value="1.4">Premium +40%</option>
+            </select>
             <span class="muted">Region</span>
-            <input id="att-region" placeholder="e.g. us-east" style="width:150px;" />
-            <span style="flex:1;"></span>
-            <button id="att-btn" class="iconbtn">Attach to marketplace</button>
+            <input id="att-region" placeholder="e.g. us-east" style="width:120px;" />
+          </div>
+          <div id="att-earn" class="ready-banner ok" style="margin:10px 0 4px;"><span>—</span></div>
+          <div class="filerow" style="align-items:center;">
+            <span class="hint" style="flex:1;">You never set a dollar price — it's derived from platform rates. Adjust the sliders and Save.</span>
+            <button id="att-btn" class="iconbtn">Save — attach to marketplace</button>
           </div>
           <!-- Next step for a Mac: set up Xcode so it can offer Xcode Cloud builds. -->
           <div id="att-xcode" class="hidden" style="margin-top:14px;border-top:1px dashed var(--line);padding-top:12px;">
@@ -876,6 +902,51 @@
     bd.querySelector("[data-yes]").onclick=()=>done(inp.value);
     inp.onkeydown=e=>{if(e.key==="Enter")done(inp.value);if(e.key==="Escape")done(null);};
     bd.onclick=e=>{if(e.target===bd)done(null);};
+  });}
+  // --- marketplace pricing (mirror of backend cloudcompute/pricing.py) -------
+  let _rates=null;
+  const _FALLBACK_RATES={vcpu_hr:0.004,ram_gb_hr:0.001,storage_gb_hr:0.00005,macos_multiplier:1.5,platform_fee:0.20};
+  function rateCard(){return _rates||_FALLBACK_RATES;}
+  function isMacSpecs(sp){const o=((sp&&sp.os)||"").toLowerCase();return o.indexOf("mac")>=0||o.indexOf("darwin")>=0;}
+  function priceSlice(v,ram,st,mult,macos){const r=rateCard();
+    const base=Math.max(0,v)*r.vcpu_hr+Math.max(0,ram)*r.ram_gb_hr+Math.max(0,st)*r.storage_gb_hr;
+    return base*Math.max(0,(mult==null?1:mult))*(macos?r.macos_multiplier:1);}
+  function capsOf(s){const sp=s.specs||{};return {
+    mv:Math.max(1,parseInt(s.max_vcpu||sp.cpus||1,10)),
+    mr:Math.max(1,Math.round(Number(s.max_ram_gb||sp.memory_gb||1))),
+    ms:Math.max(0,Math.round(Number(s.max_storage_gb!=null?s.max_storage_gb:(sp.disk_free_gb||0))))};}
+  function fmtHr(x){x=Number(x||0);return x<=0?"free":("$"+(x<1?x.toFixed(4):x.toFixed(2)));}
+  // Renter picks a slice (bounded by the owner's caps) with a live price.
+  function rentSlice(s){return new Promise(res=>{
+    const caps=capsOf(s), sp=s.specs||{}, macos=isMacSpecs(sp), mult=Number(s.rate_multiplier||1);
+    const nm=s.node_name||s.provider_id;
+    const root=document.getElementById("modal-root");root.innerHTML="";
+    const bd=document.createElement("div");bd.className="modal-backdrop";
+    const row=(lab,id,mx,val)=>"<div class='filerow' style='align-items:center;gap:10px;margin-top:6px;'>"+
+      "<span class='muted' style='width:64px;'>"+lab+"</span>"+
+      "<input id='"+id+"' type='range' min='"+(id==='__rs'?0:1)+"' max='"+mx+"' step='1' value='"+val+"' style='flex:1;'/>"+
+      "<b id='"+id+"v' style='width:60px;text-align:right;font-variant-numeric:tabular-nums;'></b></div>";
+    bd.innerHTML="<div class='modal'><h4>Rent “"+escapeHtml(nm)+"”</h4>"+
+      "<div class='msg'>Pick how much to rent — up to what the owner offers. Billed per-minute; mock checkout, nothing is charged yet.</div>"+
+      row("vCPU","__rv",caps.mv,Math.min(2,caps.mv))+
+      row("RAM","__rr",caps.mr,Math.min(4,caps.mr))+
+      (caps.ms>0?row("Storage","__rs",caps.ms,0):"")+
+      "<div id='__rprice' class='ready-banner ok' style='margin:11px 0 2px;'><span>—</span></div>"+
+      "<div class='actions'><button class='ghost' data-no>Cancel</button><button data-yes>Pay &amp; rent</button></div></div>";
+    root.appendChild(bd);
+    const rv=bd.querySelector("#__rv"),rr=bd.querySelector("#__rr"),rs=bd.querySelector("#__rs");
+    function upd(){const v=+rv.value,ram=+rr.value,st=rs?+rs.value:0;
+      bd.querySelector("#__rvv").textContent=v;bd.querySelector("#__rrv").textContent=ram+" GB";
+      if(rs)bd.querySelector("#__rsv").textContent=st+" GB";
+      const p=priceSlice(v,ram,st,mult,macos);
+      bd.querySelector("#__rprice span").innerHTML="You pay <b>"+fmtHr(p)+"/hr</b>"+(macos?" · <span class='hint'>incl. macOS premium</span>":"");}
+    [rv,rr,rs].forEach(el=>{if(el)el.oninput=upd;});upd();
+    const done=v=>{root.innerHTML="";res(v);};
+    bd.querySelector("[data-no]").onclick=()=>done(null);
+    bd.querySelector("[data-yes]").onclick=()=>done({vcpu:+rv.value,ram_gb:+rr.value,
+      storage_gb:rs?+rs.value:0,price:priceSlice(+rv.value,+rr.value,rs?+rs.value:0,mult,macos)});
+    bd.onclick=e=>{if(e.target===bd)done(null);};
+    document.addEventListener("keydown",function esc(e){if(e.key==="Escape"){done(null);document.removeEventListener("keydown",esc);}});
   });}
   // Show the scoped login a rent auto-provisioned (v0.29 handshake). The
   // password is returned ONCE, so surface it clearly with copy buttons.
@@ -1161,6 +1232,7 @@
   async function loadMarketplace(){
     loadInvite();
     let d; try{ d=await api("/api/pool/servers"); }catch(e){ return; }
+    _rates=d.rates||_rates;
     const grid=$("mkt-grid"), servers=d.servers||[], mine=d.mine||[];
     _mktServers=servers;
     // your active rentals (survives reload) with release buttons
@@ -1181,31 +1253,30 @@
       const sp=s.specs||{};
       const gpu=(sp.gpus&&sp.gpus.length)?(" · "+sp.gpus.length+"× "+escapeHtml(sp.gpus[0].name||"GPU")):"";
       const xcode=(sp.xcode&&sp.xcode.capable)?" <span class='tag completed' style='font-size:10px;vertical-align:1px;' title='"+escapeHtml("Xcode "+(sp.xcode.version||"")).trim()+"'>Xcode</span>":"";
-      const price=Number(s.price_per_hour||0);
+      const caps=capsOf(s);
+      // "from" price = a minimal 1 vCPU / 1 GB slice; owners cap the max.
+      const from=priceSlice(1,1,0,Number(s.rate_multiplier||1),isMacSpecs(sp));
       return "<div class='srv'><div class='nm'><span class='state-badge run'><span class='d'></span>online</span>"+
         escapeHtml(s.node_name||s.provider_id)+xcode+"</div>"+
-        "<div class='specs'>"+(sp.cpus||"?")+" vCPU · "+(sp.memory_gb||"?")+" GB RAM"+gpu+
+        "<div class='specs'>rent up to "+caps.mv+" vCPU · "+caps.mr+" GB RAM"+gpu+
         (sp.os?("<br>"+escapeHtml(sp.os)):"")+(s.region?(" · "+escapeHtml(s.region)):"")+"</div>"+
-        "<div class='price'>"+(price>0?("$"+price.toFixed(2)+" <small>/hr</small>"):"<small>free</small>")+"</div>"+
+        "<div class='price'>"+(from>0?("from "+fmtHr(from)+" <small>/hr</small>"):"<small>free</small>")+"</div>"+
         "<div class='foot'><button class='iconbtn' data-rent='"+escapeHtml(s.provider_id)+"'>Rent</button></div></div>";
     }).join("");
     grid.querySelectorAll("[data-rent]").forEach(b=>b.onclick=()=>rentServer(b.getAttribute("data-rent")));
   }
   async function rentServer(pid){
     const sv=_mktServers.find(x=>x.provider_id===pid)||{};
-    const price=Number(sv.price_per_hour||0);
     const nm=sv.node_name||pid;
-    // Mock payment: acknowledge "payment" on the Pay click. No card is charged
-    // until real billing is wired — the rental is recorded as paid_mock.
-    const msg = price>0
-      ? ("Pay $"+price.toFixed(2)+"/hr to rent “"+nm+"”? Mock checkout — nothing is charged yet; "
-         +"you'll get a private login and can release it anytime.")
-      : ("Rent “"+nm+"” (free)? You'll get a private login; release it when done.");
-    if(!await uiConfirm(msg, price>0?{title:"Checkout",ok:"Pay & rent"}:{ok:"Rent"}))return;
+    // Renter sizes the slice (bounded by caps) with a live price, then Pays.
+    const pick=await rentSlice(sv);
+    if(!pick)return;
     try{
-      const r=await api("/api/pool/rent",{method:"POST",body:{provider_id:pid,paid:true}});
+      const r=await api("/api/pool/rent",{method:"POST",body:{provider_id:pid,paid:true,
+        vcpu:pick.vcpu, ram_gb:pick.ram_gb, storage_gb:pick.storage_gb}});
       const s=r.server||{}, acc=r.access||null;
-      if(price>0) toast("✓ Payment acknowledged (mock) — renting "+nm,"ok");
+      const paid=Number(s.price_per_hour!=null?s.price_per_hour:pick.price);
+      toast("✓ Payment acknowledged (mock) — renting "+nm+" · "+pick.vcpu+" vCPU / "+pick.ram_gb+" GB · "+fmtHr(paid)+"/hr","ok");
       // v0.29 auto-provision: show the scoped creds the hub minted for you.
       if(acc && acc.ok){ showRentCreds(s,acc); }
       else { toast("rented "+(s.node_name||pid)+(s.public_url?(" — sign in at "+s.public_url):""),"ok"); }
@@ -1273,14 +1344,28 @@
   let _showCmd=false;   // set when the user explicitly asks for the install command
   async function detectAgentOnce(){
     let owned=[];
-    try{ const m=await api("/api/pool/mine"); owned=m.owned||[]; }catch(e){}
+    try{ const m=await api("/api/pool/mine"); owned=m.owned||[]; _rates=m.rates||_rates; }catch(e){}
     const local=await probeLocalAgent();                           // same-machine proof + live xcode status
     if(owned.length && !_showCmd){ showMachine(owned[0], local); return true; }   // you already have a machine -> show it
     if(local){ setAgentStatus(true,"Agent detected on this machine — registering with the hub…"); return false; }
     setAgentStatus(false,"No agent detected yet. Run the command above on the machine you want to add — this updates automatically.");
     return false;
   }
-  // Show YOUR machine: live status + price/region (attach/update) + the Mac Xcode step.
+  // Live owner earnings estimate from the current cap-slider positions.
+  function attUpdateEarn(sp){
+    const v=+(($("att-vcpu")&&$("att-vcpu").value)||1);
+    const ram=+(($("att-ram")&&$("att-ram").value)||1);
+    const st=+(($("att-storage")&&$("att-storage").value)||0);
+    const mult=Number(($("att-mode")&&$("att-mode").value)||1), macos=isMacSpecs(sp);
+    if($("att-vcpu-val")) $("att-vcpu-val").textContent=v+" / "+((sp&&sp.cpus)||v);
+    if($("att-ram-val")) $("att-ram-val").textContent=ram+" / "+((sp&&Math.round(sp.memory_gb))||ram)+" GB";
+    if($("att-storage-val")) $("att-storage-val").textContent=st+" GB";
+    const p=priceSlice(v,ram,st,mult,macos), fee=rateCard().platform_fee||0.2, earn=p*(1-fee);
+    if($("att-earn")) $("att-earn").innerHTML="<span>Renter pays up to <b>"+fmtHr(p)+
+      "/hr</b> · you earn ≈ <b>"+fmtHr(earn)+"/hr</b> <span class='hint'>(after "+Math.round(fee*100)+
+      "% platform fee"+(macos?", incl. macOS premium":"")+")</span></span>";
+  }
+  // Show YOUR machine: live status + caps/pricing (attach/update) + the Mac Xcode step.
   let _machineShown=false, _xcodeWasCapable=false;
   function showMachine(m, local){
     const add=$("prov-addmachine"), att=$("prov-attach"); if(!att) return;
@@ -1294,12 +1379,25 @@
         (live? " and live in the marketplace."
              : online? (" — registered, but not rentable yet ("+(ch.required_passed||0)+"/"+(ch.total_required||0)+" checks pass).")
                      : " — currently offline; start the agent on it.")+"</span>"; }
-    if($("att-specs")) $("att-specs").textContent=(sp.cpus||"?")+" vCPU · "+(sp.memory_gb||"?")+" GB RAM"+
+    if($("att-specs")) $("att-specs").textContent="Detected: "+(sp.cpus||"?")+" vCPU · "+(sp.memory_gb||"?")+" GB RAM"+
+      ((sp.disk_free_gb!=null)?(" · "+sp.disk_free_gb+" GB free disk"):"")+
       ((sp.gpus&&sp.gpus.length)?(" · "+sp.gpus.length+"× GPU"):"")+(sp.os?(" · "+sp.os):"");
-    if(!_machineShown){ if($("att-price")) $("att-price").value=(m.price_per_hour!=null?m.price_per_hour:0);
-                        if($("att-region")) $("att-region").value=(m.region||""); }
+    // Initialise the cap sliders once (don't fight the owner while they drag).
+    if(!_machineShown){
+      const spCpus=Math.max(1,parseInt(sp.cpus||1,10));
+      const spRam=Math.max(1,Math.round(Number(sp.memory_gb||1)));
+      const spDisk=Math.max(0,Math.round(Number(sp.disk_free_gb||0)));
+      if($("att-vcpu")){ $("att-vcpu").max=spCpus; $("att-vcpu").value=Math.min(spCpus,Math.max(1,parseInt(m.max_vcpu||spCpus,10))); }
+      if($("att-ram")){ $("att-ram").max=spRam; $("att-ram").value=Math.min(spRam,Math.round(Number(m.max_ram_gb||spRam))); }
+      if($("att-storage")){ $("att-storage").max=spDisk; $("att-storage").value=Math.min(spDisk,Math.round(Number(m.max_storage_gb!=null?m.max_storage_gb:spDisk))); }
+      if($("att-region")) $("att-region").value=(m.region||"");
+      if($("att-mode")) $("att-mode").value=String(m.rate_multiplier||1);
+      ["att-vcpu","att-ram","att-storage","att-mode"].forEach(id=>{const el=$(id);
+        if(el){ el.oninput=()=>attUpdateEarn(sp); el.onchange=()=>attUpdateEarn(sp); }});
+    }
     _machineShown=true;
-    if($("att-btn")) $("att-btn").textContent="Update price / region";
+    attUpdateEarn(sp);
+    if($("att-btn")) $("att-btn").textContent="Save — update marketplace";
     const isMac=/mac|darwin/i.test(sp.os||""), xc=$("att-xcode");
     if(xc){
       if(isMac){
@@ -1319,7 +1417,7 @@
           if(!_xcodeWasCapable){ _xcodeWasCapable=true; toast("✓ Xcode is ready — your Mac can now take Xcode Cloud builds","ok"); }
           if($("att-xcode-status")) $("att-xcode-status").innerHTML =
             "✓ <b>Xcode ready</b>"+(ver?(" ("+escapeHtml(ver)+")"):"")+" — this Mac can take Xcode Cloud builds."+
-            "<br><span class='hint'><b>Next step:</b> set your hourly price below and click <b>Save</b>. Your Mac then appears in the marketplace under the <b>macOS / Xcode</b> filter for renters who need iOS &amp; macOS builds.</span>";
+            "<br><span class='hint'><b>Next step:</b> set how much of this Mac to rent out below and click <b>Save</b>. It then appears in the marketplace under the <b>macOS / Xcode</b> filter for renters who need iOS &amp; macOS builds.</span>";
           if($("att-xcode-actions")) $("att-xcode-actions").style.display="none";
           if($("att-xcode-manual")) $("att-xcode-manual").style.display="none";
         } else {
@@ -1340,10 +1438,15 @@
   }
   async function attachMachine(){
     const att=$("prov-attach"), pid=att&&att.dataset.pid; if(!pid) return;
-    const price=Number($("att-price").value||0), region=($("att-region").value||"").trim();
+    const region=($("att-region").value||"").trim();
+    const body={provider_id:pid, region:region||null,
+      max_vcpu:parseInt(($("att-vcpu")&&$("att-vcpu").value)||1,10),
+      max_ram_gb:Number(($("att-ram")&&$("att-ram").value)||1),
+      max_storage_gb:Number(($("att-storage")&&$("att-storage").value)||0),
+      rate_multiplier:Number(($("att-mode")&&$("att-mode").value)||1)};
     const btn=$("att-btn"); if(btn) btn.disabled=true;
     try{
-      await api("/api/pool/configure",{method:"POST",body:{provider_id:pid,price_per_hour:price,region:region||null}});
+      await api("/api/pool/configure",{method:"POST",body});
       toast("✓ saved — your machine is attached to the marketplace","ok");
       loadMarketplace();
       _machineShown=false; detectAgentOnce();    // refresh the panel from the server
