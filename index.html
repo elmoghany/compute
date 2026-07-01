@@ -232,6 +232,14 @@
     .srv .price{font-size:20px;font-weight:680;letter-spacing:-.3px;}
     .srv .price small{font-size:12px;color:var(--muted);font-weight:400;}
     .srv .foot{margin-top:auto;display:flex;gap:8px;align-items:center;}
+    /* marketplace filter chips */
+    .chips{display:flex;flex-wrap:wrap;gap:7px;margin:2px 0 14px;}
+    .chip{background:transparent;color:var(--muted);border:1px solid var(--line-2);
+      border-radius:999px;padding:5px 12px;font-size:12.5px;font-weight:500;cursor:pointer;
+      transition:all .12s;}
+    .chip:hover{color:var(--text);border-color:var(--muted);background:var(--bg-2);}
+    .chip.on{background:var(--accent-soft);color:var(--text);border-color:var(--accent);}
+    .chip .n{font-variant-numeric:tabular-nums;opacity:.6;margin-left:5px;}
     @media(prefers-reduced-motion:reduce){
       *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;}
     }
@@ -647,8 +655,16 @@
       <section class="card hidden" id="marketplace-card">
         <h3>Marketplace <span class="muted">(rent a server from the pool)</span>
           <button id="mkt-refresh" class="iconbtn" title="Refresh" aria-label="Refresh marketplace" style="float:right;">↻</button>
-          <label class="muted" style="float:right;margin-right:12px;font-size:12px;cursor:pointer;"><input type="checkbox" id="mkt-xcode-only" style="vertical-align:-1px;"/> Xcode-capable only</label>
         </h3>
+        <!-- Capability filters. None selected = show every rentable machine. -->
+        <div class="chips" id="mkt-filters" role="group" aria-label="Filter machines">
+          <button class="chip on" data-filter="all">All</button>
+          <button class="chip" data-filter="xcode">Xcode</button>
+          <button class="chip" data-filter="gpu">GPU</button>
+          <button class="chip" data-filter="macos">macOS</button>
+          <button class="chip" data-filter="windows">Windows</button>
+          <button class="chip" data-filter="linux">Linux</button>
+        </div>
         <div id="mkt-invite" class="hidden" style="margin-bottom:14px;padding:13px 15px;border:1px solid var(--line-2);border-radius:10px;background:var(--bg-2);">
           <div style="font-weight:600;font-size:13.5px;margin-bottom:3px;">Grow your pool — add a PC in one command</div>
           <div class="hint" style="margin-bottom:8px;">Share this with anyone who wants to rent out their machine. They paste it into PowerShell (Windows) and their PC joins your pool automatically.</div>
@@ -1243,12 +1259,14 @@
         "<button class='iconbtn' data-release='"+escapeHtml(s.provider_id)+"'>Release</button></span>").join("");
       $("mkt-rented").querySelectorAll("[data-release]").forEach(b=>b.onclick=()=>releaseServer(b.getAttribute("data-release")));
     } else { $("mkt-rented").innerHTML=""; }
-    const xcodeOnly=$("mkt-xcode-only")&&$("mkt-xcode-only").checked;
-    const shown=xcodeOnly?servers.filter(s=>s.specs&&s.specs.xcode&&s.specs.xcode.capable):servers;
+    const filters=activeFilters();
+    const filtering=filters.length>0 && filters.indexOf("all")<0;
+    const shown=servers.filter(s=>serverMatchesFilters(s,filters));
+    updateFilterCounts(servers);
     $("mkt-empty").classList.toggle("hidden", shown.length>0);
-    if($("mkt-empty")) $("mkt-empty").textContent = xcodeOnly&&!shown.length
-      ? "No Xcode-capable machines available right now." :
-      "No servers available right now — check back, or become a provider to add yours.";
+    if($("mkt-empty")) $("mkt-empty").textContent = filtering&&!shown.length
+      ? "No machines match these filters right now — try removing one, or check back."
+      : "No servers available right now — check back, or become a provider to add yours.";
     grid.innerHTML=shown.map(s=>{
       const sp=s.specs||{};
       const gpu=(sp.gpus&&sp.gpus.length)?(" · "+sp.gpus.length+"× "+escapeHtml(sp.gpus[0].name||"GPU")):"";
@@ -1288,8 +1306,53 @@
       $("mkt-rented").innerHTML=""; toast("released","ok"); loadMarketplace(); }
     catch(e){ toast(e.message,"error"); }
   }
+  // --- marketplace capability filters (Xcode / GPU / OS). None on = show all. ---
+  function activeFilters(){
+    return Array.prototype.slice.call(document.querySelectorAll("#mkt-filters .chip.on"))
+      .map(b=>b.getAttribute("data-filter"));
+  }
+  // macOS only on Macs; Linux on anything (via Vagrant VM / Docker); Windows on
+  // Windows hosts. Mirrors backend pool.os_provides.
+  function osProvides(o){o=(o||"").toLowerCase();
+    if(o.indexOf("mac")>=0||o.indexOf("darwin")>=0) return ["macos","linux"];
+    if(o.indexOf("win")>=0) return ["windows","linux"];
+    return ["linux"];}
+  function serverMatchesFilters(s,filters){
+    if(!filters.length || filters.indexOf("all")>=0) return true;
+    const sp=s.specs||{};
+    // capability chips are AND (must have every selected capability)
+    if(filters.indexOf("xcode")>=0 && !(sp.xcode&&sp.xcode.capable)) return false;
+    if(filters.indexOf("gpu")>=0 && !(sp.gpus&&sp.gpus.length)) return false;
+    // OS chips are an OR group, matched against what the machine can PROVIDE
+    // (not just its host OS) — so a Mac also matches "Linux".
+    const oss=filters.filter(f=>f==="macos"||f==="windows"||f==="linux");
+    if(oss.length){
+      const provides=(sp.provides&&sp.provides.length)?sp.provides.map(x=>String(x).toLowerCase()):osProvides(sp.os);
+      if(!oss.some(f=>provides.indexOf(f)>=0)) return false;
+    }
+    return true;
+  }
+  function updateFilterCounts(servers){
+    const n=f=> f==="all"?servers.length:servers.filter(s=>serverMatchesFilters(s,[f])).length;
+    document.querySelectorAll("#mkt-filters .chip").forEach(b=>{
+      const f=b.getAttribute("data-filter");
+      let c=b.querySelector(".n"); if(!c){ c=document.createElement("span"); c.className="n"; b.appendChild(c); }
+      c.textContent=n(f);
+    });
+  }
   if($("mkt-refresh")) $("mkt-refresh").addEventListener("click",loadMarketplace);
-  if($("mkt-xcode-only")) $("mkt-xcode-only").addEventListener("change",loadMarketplace);
+  if($("mkt-filters")) $("mkt-filters").addEventListener("click",e=>{
+    const b=e.target.closest(".chip"); if(!b) return;
+    if(b.getAttribute("data-filter")==="all"){
+      document.querySelectorAll("#mkt-filters .chip").forEach(c=>c.classList.toggle("on", c===b));
+    } else {
+      b.classList.toggle("on");
+      const other=document.querySelectorAll('#mkt-filters .chip.on:not([data-filter="all"])').length>0;
+      const all=document.querySelector('#mkt-filters .chip[data-filter="all"]');
+      if(all) all.classList.toggle("on", !other);   // "All" auto-(de)selects
+    }
+    loadMarketplace();
+  });
   async function loadInvite(){
     if(!isAdmin()){ $("mkt-invite").classList.add("hidden"); return; }
     let inv; try{ inv=await api("/api/pool/invite"); }catch(e){ return; }
