@@ -1411,6 +1411,21 @@
     const local=await probeLocalAgent();                           // same-machine proof + live xcode status
     if(owned.length && !_showCmd){ showMachine(owned[0], local); return true; }   // you already have a machine -> show it
     if(local){ setAgentStatus(true,"Agent detected on this machine — registering with the hub…"); return false; }
+    // The HUB is the source of truth. Some browsers (notably Safari) block the
+    // http://127.0.0.1 probe from an https page even when the agent is up, so a
+    // failed probe does NOT mean "no agent" — check what's already registered.
+    const onlineOwned=owned.filter(o=>o.status==="online");
+    if(onlineOwned.length){
+      setAgentStatus(true, onlineOwned.map(o=>o.node_name||o.provider_id).join(", ")+
+        (onlineOwned.length>1?" are":" is")+" online and registered ✓  —  reload to manage "+
+        (onlineOwned.length>1?"them":"it")+", or run the command above to add another machine.");
+      return false;
+    }
+    if(owned.length){
+      setAgentStatus(false, (owned[0].node_name||"Your machine")+
+        " is registered but currently offline — start the agent on it (reload to manage it).");
+      return false;
+    }
     setAgentStatus(false,"No agent detected yet. Run the command above on the machine you want to add — this updates automatically.");
     return false;
   }
