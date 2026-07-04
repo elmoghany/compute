@@ -713,6 +713,10 @@
         <!-- Shown automatically when you already have a machine: its status + attach/Xcode. -->
         <div id="prov-attach" class="hidden">
           <div id="att-banner" class="ready-banner ok" style="margin-bottom:11px;"><span>—</span></div>
+          <div id="att-rented" class="hidden" style="margin-bottom:11px;padding:10px 13px;border:1px solid var(--line-2);border-radius:9px;background:var(--bg-2);display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span id="att-rented-msg" class="hint" style="flex:1;"></span>
+            <button id="att-reclaim" class="iconbtn" style="white-space:nowrap;">Free it</button>
+          </div>
           <div id="att-specs" class="hint" style="margin-bottom:10px;"></div>
           <div class="filerow" style="align-items:center;gap:10px;margin-bottom:12px;">
             <span class="muted" style="width:74px;">Name</span>
@@ -1464,6 +1468,16 @@
         (live? " and live in the marketplace."
              : online? (" — registered, but not rentable yet ("+(ch.required_passed||0)+"/"+(ch.total_required||0)+" checks pass).")
                      : " — currently offline; start the agent on it.")+"</span>"; }
+    // If your machine is currently rented, show by whom + let you reclaim it
+    // (reinstalling never frees a rental — only a release does).
+    const rentedBy=m.rented_by||(m.rented?"someone":null), rn=$("att-rented");
+    if(rn){
+      rn.classList.toggle("hidden", !rentedBy);
+      if(rentedBy){
+        rn.dataset.pid=m.provider_id||"";
+        if($("att-rented-msg")) $("att-rented-msg").innerHTML="🔒 Currently <b>rented by "+escapeHtml(rentedBy)+"</b>. It stays locked (and hidden from the marketplace) until released — reinstalling won't free it.";
+      }
+    }
     if($("att-specs")) $("att-specs").textContent="Detected: "+(sp.cpus||"?")+" vCPU · "+(sp.memory_gb||"?")+" GB RAM"+
       ((sp.disk_free_gb!=null)?(" · "+sp.disk_free_gb+" GB free disk"):"")+
       ((sp.gpus&&sp.gpus.length)?(" · "+sp.gpus.length+"× GPU"):"")+(sp.os?(" · "+sp.os):"");
@@ -1541,6 +1555,16 @@
     finally{ if(btn) btn.disabled=false; }
   }
   if($("att-btn")) $("att-btn").addEventListener("click",attachMachine);
+  // Owner reclaims their own machine from a stuck/active rental.
+  if($("att-reclaim")) $("att-reclaim").addEventListener("click",async function(){
+    const pid=$("att-rented")&&$("att-rented").dataset.pid; if(!pid) return;
+    if(!await uiConfirm("Free this machine from its current rental? The renter loses access and it returns to the marketplace.",{title:"Reclaim machine",ok:"Free it"})) return;
+    const btn=this; btn.disabled=true;
+    try{ await api("/api/pool/release",{method:"POST",body:{provider_id:pid}});
+      toast("✓ machine freed — it's back in the marketplace","ok");
+      _machineShown=false; detectAgentOnce(); loadMarketplace();
+    }catch(e){ toast(e.message,"error"); } finally{ btn.disabled=false; }
+  });
   // One-click Xcode setup: ask THIS Mac's agent to run the privileged steps via a
   // native macOS admin prompt (no terminal). Only works when browsing on the Mac.
   async function autoSetupXcode(){
